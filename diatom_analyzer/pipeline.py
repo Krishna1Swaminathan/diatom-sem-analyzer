@@ -2,10 +2,13 @@
 
 from pathlib import Path
 
+from skimage.segmentation import relabel_sequential
+
 from .calibration import calibrate
 from .classification import extract_features
 from .config import AnalysisConfig
 from .damage import grade_damage
+from .editing import apply_edits
 from .loading import load_image
 from .measurements import classify_morphotype, classify_view, measure_frustules
 from .models import ImageResult
@@ -49,8 +52,12 @@ def identify_and_grade(fr, library, config):
 
 
 def analyze_image(source, name=None, config=None, manual_um_per_px=None, manual_bar_um=None,
-                  library=None, databar_top=None, use_ocr=True, sidecar_text=None):
-    """Run the full pipeline on one image (a path, or raw bytes plus ``name``)."""
+                  library=None, databar_top=None, use_ocr=True, sidecar_text=None, edits=()):
+    """Run the full pipeline on one image (a path, or raw bytes plus ``name``).
+
+    ``edits`` are manual corrections, ``("add" | "remove", x, y, size_px)``, replayed on top of the
+    automatic detection before anything is measured.
+    """
     config = config or AnalysisConfig()
     is_path = isinstance(source, (str, Path))
     name = name or (Path(source).name if is_path else "image")
@@ -72,13 +79,19 @@ def analyze_image(source, name=None, config=None, manual_um_per_px=None, manual_
 
     exclude = _inset_exclusion(cal, top, image.shape[1])
     labels = segment_frustules(region, um, config.segmentation, exclude_boxes=exclude)
+    manual = set()
+    if edits:
+        labels, manual = apply_edits(region, labels, edits)
+        labels, forward, _ = relabel_sequential(labels)
+        manual = {int(forward[m]) for m in manual}
     frustules = measure_frustules(labels, region.shape, exclude_boxes=exclude)
 
     for fr in frustules:
         fr.pores, fr.crack_candidates = detect_pores(region, labels, fr, um, config.pores)
         fr.features = extract_features(fr, region, labels, um)
         identify_and_grade(fr, library, config)
-        if config.segmentation.method == "round_cells":
+        fr.origin = "manual" if fr.frustule_id in manual else "auto"
+        if config.segmentation.method == "round_cells" and fr.origin == "auto":
             fr.damage = "not graded"  # outlines are fitted circles, so outline-based grading is meaningless
 
     if not frustules:

@@ -53,6 +53,7 @@ class Frustule:
     damage: str = "uncertain"
     crack_length_px: float = 0.0
     crack_candidates: list = field(default_factory=list)
+    origin: str = "auto"  # "auto" (detected) or "manual" (added by a click)
     species: str = ""  # "" = no species library loaded, "unknown" = no confident match
     species_confidence: float = 0.0
     species_distance: float = float("nan")

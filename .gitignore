@@ -8,3 +8,4 @@ venv/
 outputs/
 *.xlsx.tmp
 .streamlit/
+training_data/

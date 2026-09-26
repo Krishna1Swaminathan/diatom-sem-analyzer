@@ -11,6 +11,7 @@ from . import __version__
 COLUMN_GUIDE = [
     ("Frustules", "image", "Source file name"),
     ("Frustules", "frustule_id", "Number shown on the annotated image"),
+    ("Frustules", "origin", "auto = found by the detector, manual = added by clicking on it in the app"),
     ("Frustules", "species", "Best match in the species library ('unknown' = no confident match, blank = no library)"),
     ("Frustules", "species_confidence", "0-1; how clearly the best species beats the others and how close it is"),
     ("Frustules", "morphotype", "centric / pennate (elliptic) / pennate (linear) / girdle view / fragment"),
@@ -57,6 +58,7 @@ def frustule_rows(result):
         rows.append({
             "image": result.name,
             "frustule_id": fr.frustule_id,
+            "origin": fr.origin,
             "species": fr.species,
             "species_confidence": round(fr.species_confidence, 3) if fr.species else None,
             "morphotype": fr.morphotype,
