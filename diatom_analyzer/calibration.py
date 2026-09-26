@@ -32,8 +32,8 @@ def _unit_factor(unit):
     u = unit.lower().replace(" ", "")
     if u in ("nm", "mm"):
         return UNIT_TO_UM[u]
-    if u.endswith("m") and len(u) == 2:
-        return 1.0
+    if u.endswith("m") and 2 <= len(u) <= 3 and all(c in "µμuyp" for c in u[:-1]):
+        return 1.0  # micrometre, however the OCR spelled the micro sign
     return UNIT_TO_UM.get(u)
 
 
@@ -344,21 +344,35 @@ def _ocr(region):
     return texts
 
 
+# Scale bars carry one significant digit (Phenom: 3, 8, 20, 70 µm...; Hitachi: 0.5, 2, 30 µm...),
+# sometimes 1.5 or 2.5. Field widths printed beside them (47.2 µm, 94.8 µm) do not.
+_ROUND_MANTISSAS = (1, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8, 9)
+
+
 def _is_round_value(value):
-    """Scale bars are labelled with round numbers: 1, 2, 2.5, 3, 5 times a power of ten."""
     if value <= 0:
         return False
     mantissa = value / 10 ** math.floor(math.log10(value))
-    return any(abs(mantissa - m) < 1e-6 for m in (1, 2, 2.5, 3, 4, 5))
+    return any(abs(mantissa - m) < 1e-6 for m in _ROUND_MANTISSAS)
 
 
-_TOKEN_RE = re.compile(r"^(\d+(?:[.,]\d+)?)\s*(nm|mm|[µμuyp]\s?m)$", re.IGNORECASE)
+def _significant_digits(number_text):
+    """"47.2" -> 3, "120" -> 2, "0.50" -> 1: bar labels have at most two, field widths three."""
+    digits = number_text.replace(",", ".").replace(".", "").lstrip("0")
+    return len(digits.rstrip("0")) or 1
+
+
+_TOKEN_RE = re.compile(r"^(\d+(?:[.,]\d+)?)\s*(nm|mm|[µμuyp]{1,2}\s?m)$", re.IGNORECASE)
 
 
 def _ocr_tokens(region, scale, psm):
     """Words with positions (in region pixels) from one OCR pass."""
+    import os
+
     import pytesseract
-    up = cv2.resize((region * 255).astype(np.uint8), None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+    os.environ.setdefault("OMP_THREAD_LIMIT", "1")  # tesseract's own threading is slower for small crops
+    u8 = (region * 255).astype(np.uint8)
+    up = u8 if scale == 1 else cv2.resize(u8, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
     _, bw = cv2.threshold(up, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     if (bw > 0).mean() < 0.5:
         bw = 255 - bw  # tesseract wants dark text on a light page
@@ -378,24 +392,40 @@ def _ocr_tokens(region, scale, psm):
     return words
 
 
+_NUMBER_RE = re.compile(r"^\d+(?:[.,]\d+)?$")
+_UNIT_RE = re.compile(r"^(nm|mm|[µμuyp]{1,2}m)$", re.IGNORECASE)
+
+
 def _label_candidates(words):
-    """Number+unit tokens, allowing "40µm" as one word or "200 µm" as two adjacent words."""
-    words = sorted(words, key=lambda w: (round(w[2] / max(w[4], 1)), w[1]))
+    """Number+unit tokens: "40µm" as one word, or a number with a unit word just to its right."""
     out = []
-    for i, (t, x, y, w, h) in enumerate(words):
-        options = [(t, (x, y, x + w, y + h))]
-        if i + 1 < len(words):
-            t2, x2, y2, w2, h2 = words[i + 1]
-            if abs(y2 - y) < 0.6 * max(h, h2) and 0 <= x2 - (x + w) < 1.5 * max(h, h2):
-                options.append((f"{t} {t2}", (x, min(y, y2), x2 + w2, max(y + h, y2 + h2))))
-        for text, box in options:
-            m = _TOKEN_RE.match(text.replace(",", "."))
-            if m and _parse_number(m.group(1)) > 0:
-                out.append((_parse_number(m.group(1)) * _unit_factor(m.group(2)), text, box))
+    for t, x, y, w, h in words:
+        m = _TOKEN_RE.match(t.replace(",", "."))
+        if m and _parse_number(m.group(1)) > 0:
+            out.append((_parse_number(m.group(1)) * _unit_factor(m.group(2)), t, (x, y, x + w, y + h)))
+            continue
+        if not _NUMBER_RE.match(t) or _parse_number(t) <= 0:
+            continue
+        best = None
+        for t2, x2, y2, w2, h2 in words:
+            overlap = min(y + h, y2 + h2) - max(y, y2)
+            gap = x2 - (x + w)
+            if _UNIT_RE.match(t2) and overlap > 0.4 * min(h, h2) and -2 <= gap < 1.5 * max(h, h2):
+                if best is None or gap < best[0]:
+                    best = (gap, t2, (x, min(y, y2), x2 + w2, max(y + h, y2 + h2)))
+        if best:
+            out.append((_parse_number(t) * _unit_factor(best[1]), f"{t} {best[1]}", best[2]))
     return out
 
 
-def read_bar_label(image, bbox):
+def _nearest_round(value):
+    """Closest round scale-bar value (one significant digit, or 1.5 / 2.5)."""
+    exp = math.floor(math.log10(value))
+    options = [m * 10 ** e for e in (exp - 1, exp, exp + 1) for m in _ROUND_MANTISSAS]
+    return min(options, key=lambda o: abs(math.log(o / value)))
+
+
+def read_bar_label(image, bbox, databar_top=None):
     """OCR the scale-bar label and return (length_um, raw_text) or (None, raw_text).
 
     Every number-with-unit near the bar is read; the one closest to the bar wins, so other
@@ -408,28 +438,34 @@ def read_bar_label(image, bbox):
     text_h = max(14, int(0.035 * h), 3 * (y1 - y0))
     rx0, rx1 = max(0, int(x0 - 0.6 * bar_len)), min(w, int(x1 + 0.6 * bar_len))
     ry0, ry1 = max(0, y0 - 3 * text_h), min(h, y1 + 3 * text_h)
+    if databar_top is not None and y0 >= databar_top:
+        ry0 = max(ry0, databar_top)  # the label is in the information strip, not in the micrograph
     region = image[ry0:ry1, rx0:rx1]
     if region.size == 0:
         return None, ""
+    # Tesseract reads best with ~30 px tall text; strip text is roughly a third of the strip height.
+    strip_h = (h - databar_top) if databar_top is not None and y0 >= databar_top else 3 * text_h
+    base = int(np.clip(round(30 / max(strip_h / 3, 1)), 1, 4))
     votes, seen = {}, []
-    for scale in (3, 4):
-        for psm in (11, 6):
-            words = _ocr_tokens(region, scale, psm)
-            seen.extend(t for t, *_ in words)
-            best = None
-            for value, text, (bx0, by0, bx1, by1) in _label_candidates(words):
-                bx0, bx1, by0, by1 = bx0 + rx0, bx1 + rx0, by0 + ry0, by1 + ry0
-                dx = max(bx0 - x1, x0 - bx1, 0)
-                dy = max(by0 - y1, y0 - by1, 0)
-                dist = math.hypot(dx, dy)
-                if best is None or dist < best[0]:
-                    best = (dist, value, text)
-            if best is not None:
-                key = round(best[1], 6)
-                count, dist, text = votes.get(key, (0, best[0], best[2]))
-                votes[key] = (count + 1, min(dist, best[0]), text)
-                if count + 1 >= 2 and len(votes) == 1:
-                    return best[1], text  # two independent readings agree: done
+    for scale, psm in ((base, 11), (base + 1, 11), (base, 6), (base + 2, 11)):
+        words = _ocr_tokens(region, scale, psm)
+        seen.extend(t for t, *_ in words)
+        best = None
+        for value, text, (bx0, by0, bx1, by1) in _label_candidates(words):
+            bx0, bx1, by0, by1 = bx0 + rx0, bx1 + rx0, by0 + ry0, by1 + ry0
+            dx = max(bx0 - x1, x0 - bx1, 0)
+            dy = max(by0 - y1, y0 - by1, 0)
+            dist = math.hypot(dx, dy)
+            # Bars carry round values; a non-round number nearby is usually the field width.
+            rank = dist + (0 if _significant_digits(re.match(r"[\d.,]+", text).group(0)) <= 2 else 1e6)
+            if best is None or rank < best[0]:
+                best = (rank, value, text)
+        if best is not None:
+            key = round(best[1], 6)
+            count, dist, text = votes.get(key, (0, best[0], best[2]))
+            votes[key] = (count + 1, min(dist, best[0]), text)
+            if count + 1 >= 2 and len(votes) == 1:
+                return best[1], text  # two independent readings agree: done
     if not votes:
         return None, " ".join(dict.fromkeys(seen))[:200]
     value, (count, dist, text) = max(votes.items(), key=lambda kv: (kv[1][0], -kv[1][1]))
@@ -488,13 +524,22 @@ def calibrate(image, path=None, data=None, manual_um_per_px=None, manual_bar_um=
     bar_um, label = None, None
     can_ocr = use_ocr and ocr_available()
     if bar and can_ocr:
-        bar_um, label = read_bar_label(image, bar["bbox"])
+        bar_um, label = read_bar_label(image, bar["bbox"], databar_top)
         if bar_um and bar_um / bar["length_px"] > _MAX_PLAUSIBLE_UM_PER_PX:
             label = f"{label} (rejected: implies {bar_um / bar['length_px']:.3g} µm/px)"
             bar_um = None
-        elif bar_um and not _is_round_value(_parse_number(_LABEL_RE.search(label).group(1))):
-            details["warning"] = (f"The scale bar label was read as '{label}', which is not a usual "
-                                  "scale-bar value. Please check it in the Scale calibration tab.")
+        elif bar_um and _significant_digits(re.match(r"[\d.,]+", label).group(0)) >= 3:
+            # A three-digit number beside the bar is usually the field width printed in the strip.
+            # If treating it as one makes the bar a round length, the reading is self-consistent.
+            implied = bar["length_px"] * bar_um / image.shape[1]
+            nice = _nearest_round(implied)
+            if abs(implied - nice) / nice < 0.03:
+                details["field_width_um"] = bar_um
+                label = f"{nice:g} um (bar implied by field width {label})"
+                bar_um = nice
+            else:
+                details["warning"] = (f"The scale bar label was read as '{label}', which is not a usual "
+                                      "scale-bar value. Please check it in the Scale calibration tab.")
     if bar and not bar_um and meta and meta[2].get("marker_um"):
         bar_um, label = meta[2]["marker_um"], f"{meta[2]['marker_um']:g} um (from metadata)"
 

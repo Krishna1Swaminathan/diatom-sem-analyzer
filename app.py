@@ -58,10 +58,12 @@ def library_signature(folder):
 
 
 @st.cache_data(show_spinner=False, max_entries=64)
-def run_analysis(data, name, settings, manual_um, manual_bar_um, databar_top, library_dir, _lib_sig):
+def run_analysis(data, name, settings, manual_um, manual_bar_um, databar_top, library_dir, _lib_sig,
+                 sidecar_text=None):
     library = SpeciesLibrary(library_dir) if _lib_sig else None
     return analyze_image(data, name=name, config=build_config(dict(settings)), manual_um_per_px=manual_um,
-                         manual_bar_um=manual_bar_um, library=library, databar_top=databar_top)
+                         manual_bar_um=manual_bar_um, library=library, databar_top=databar_top,
+                         sidecar_text=sidecar_text)
 
 
 def histogram(values, label):
@@ -113,7 +115,8 @@ with st.sidebar:
     st.caption("Image in, measurements out. Everything runs on this computer.")
 
     st.subheader("1 · Images")
-    uploads = st.file_uploader("SEM images (TIFF, PNG, JPG)", type=[s.strip(".") for s in IMAGE_SUFFIXES],
+    uploads = st.file_uploader("SEM images (TIFF, PNG, JPG), plus any .txt metadata files",
+                               type=[s.strip(".") for s in IMAGE_SUFFIXES] + ["txt"],
                                accept_multiple_files=True)
     demo_files = sorted(p for p in DEMO_DIR.glob("*") if p.suffix.lower() in IMAGE_SUFFIXES)
     if demo_files:
@@ -195,7 +198,10 @@ with st.sidebar:
 
 # --------------------------------------------------------------------------- inputs
 
-sources = [(f.name, f.getvalue()) for f in (uploads or [])]
+# Hitachi and JEOL write calibration to a .txt with the same name as the image.
+sidecars = {Path(f.name).stem: f.getvalue().decode(errors="ignore")
+            for f in (uploads or []) if f.name.lower().endswith(".txt")}
+sources = [(f.name, f.getvalue()) for f in (uploads or []) if not f.name.lower().endswith(".txt")]
 if state.use_demo:
     sources += [(p.name, p.read_bytes()) for p in demo_files]
 
@@ -216,7 +222,8 @@ for i, (name, data) in enumerate(sources):
     ov = state.overrides.get(name, {})
     try:
         res = run_analysis(data, name, settings_key, ov.get("um_per_px", global_um), ov.get("bar_um", global_bar),
-                           ov.get("databar_top"), library_dir, lib_sig)
+                           ov.get("databar_top"), library_dir, lib_sig,
+                           sidecars.get(Path(name).stem))
         results.append(res)
     except Exception as exc:
         st.error(f"Could not analyse {name}: {exc}")
