@@ -21,11 +21,10 @@ class PoreConfig:
 
 @dataclass
 class DamageConfig:
+    fragment_corner_deg: float = 40.0  # a sharper inward corner in the outline is a fracture
+    chip_corner_deg: float = 30.0  # a smaller sharp corner is a chip: graded cracked
     fragmented_solidity: float = 0.85
-    fragmented_regularity: float = 0.88  # best of ellipse-fit and rectangle-fill
     fragmented_notch_ratio: float = 0.25
-    cracked_solidity: float = 0.93
-    notch_depth_ratio: float = 0.08
     crack_length_ratio: float = 0.20
     max_crack_candidates: int = 3  # more parallel long dark lines than this are striae, not cracks
 
@@ -39,7 +38,7 @@ class ViewConfig:
 
 @dataclass
 class ClassifierConfig:
-    unknown_distance: float = 3.0  # standardized feature distance beyond which a frustule is "unknown"
+    unknown_distance: float = 1.5  # scaled feature distance beyond which a frustule is "unknown"
     k: int = 3
 
 

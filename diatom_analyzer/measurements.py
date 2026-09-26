@@ -4,6 +4,7 @@ import math
 
 import cv2
 import numpy as np
+from scipy.ndimage import gaussian_filter1d
 from skimage import measure
 
 from .config import ViewConfig
@@ -57,6 +58,40 @@ def _notch_depth(contour):
     return float(np.asarray(defects).reshape(-1, 4)[:, 3].max()) / 256.0
 
 
+def _sharpest_inward_corner(contour, window=0.02, ignore=None):
+    """Largest inward (concave) turn of the outline, in degrees, over ~2 % of the perimeter.
+
+    Intact valves have smooth outlines; even concave margins (crescent-shaped species) bend
+    gradually. Fracture edges meet the natural margin at sharp re-entrant corners.
+    ``ignore`` is a boolean mask (in the contour's coordinates) of outline stretches to skip,
+    such as the cut where two touching frustules were separated.
+    """
+    pts = contour[:, 0, :].astype(float)
+    n = len(pts)
+    if n < 40:
+        return 0.0
+    skip = None
+    if ignore is not None and ignore.any():
+        xi, yi = contour[:, 0, 0], contour[:, 0, 1]
+        skip = ignore[np.clip(yi, 0, ignore.shape[0] - 1), np.clip(xi, 0, ignore.shape[1] - 1)]
+    sigma = max(1.0, n / 400)
+    pts = np.stack([gaussian_filter1d(pts[:, 0], sigma, mode="wrap"),
+                    gaussian_filter1d(pts[:, 1], sigma, mode="wrap")], -1)
+    s = max(3, int(window * n))
+    v1 = pts - np.roll(pts, s, 0)
+    v2 = np.roll(pts, -s, 0) - pts
+    turn = np.arctan2(v1[:, 0] * v2[:, 1] - v1[:, 1] * v2[:, 0], (v1 * v2).sum(1))
+    outward = np.sign(turn.sum()) or 1.0  # a closed outline turns 360° in its convex direction
+    inward = -turn * outward
+    if skip is not None:
+        # the turn at a point uses neighbours s steps away, so blank a window around the cut
+        m = 2 * s  # the turn uses points s away, and the merged neck was rounded before the cut
+        near = np.convolve(np.concatenate([skip[-m:], skip, skip[:m]]).astype(float),
+                           np.ones(2 * m + 1), mode="same")[m:-m] > 0
+        inward = np.where(near, 0.0, inward)
+    return float(np.degrees(inward.max()))
+
+
 def classify_view(fr, cfg):
     if fr.rect_fill >= cfg.girdle_rect_fill:
         return "girdle"
@@ -81,8 +116,16 @@ def classify_morphotype(fr, cfg):
 def measure_frustules(labels, analysis_shape=None, exclude_boxes=()):
     h, w = analysis_shape or labels.shape
     frustules = []
+    others = labels > 0
     for region in measure.regionprops(labels):
         contour = _largest_contour(region.image)
+        r0, c0, r1, c1 = region.bbox
+        # outline pixels next to another frustule: separation cuts, not natural margins
+        pad = 3
+        window = labels[max(0, r0 - pad):r1 + pad, max(0, c0 - pad):c1 + pad]
+        neighbour = others[max(0, r0 - pad):r1 + pad, max(0, c0 - pad):c1 + pad] & (window != region.label)
+        contact = cv2.dilate(neighbour.astype(np.uint8), np.ones((7, 7), np.uint8)).astype(bool)
+        contact = contact[r0 - max(0, r0 - pad):, c0 - max(0, c0 - pad):][: r1 - r0, : c1 - c0]
         (_, _), (rw, rh), _ = cv2.minAreaRect(contour.astype(np.float32))
         length, width = max(rw, rh) + 1.0, min(rw, rh) + 1.0  # +1: pixel centres -> pixel edges
         area = float(region.area)
@@ -108,6 +151,7 @@ def measure_frustules(labels, analysis_shape=None, exclude_boxes=()):
             ellipse_iou=_ellipse_iou(region),
             circularity=float(min(1.0, 4 * math.pi * area / perimeter**2)),
             notch_depth_ratio=_notch_depth(contour) / width if width else 0.0,
+            inward_corner_deg=_sharpest_inward_corner(contour, ignore=contact),
             touches_border=bool(touches),
         )
         if aspect >= ViewConfig().round_aspect:

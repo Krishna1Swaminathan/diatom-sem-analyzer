@@ -11,12 +11,15 @@ The library is a folder with one sub-folder per species:
 No training step is needed: a new frustule is compared with every exemplar using
 rotation-invariant descriptors (outline, size, pore pattern, surface texture), each scaled by
 a typical within-species variation, so a distance of 1 means "one typical deviation away".
+With one example per species the variation comes from built-in priors; as more examples are
+added, each species' own spread is learned from them (shrunk toward the prior).
 """
 
 import json
 import math
 import re
 import time
+import uuid
 from pathlib import Path
 
 import cv2
@@ -26,9 +29,11 @@ from skimage.feature import local_binary_pattern
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
 
+# Prior within-species variation of each feature. Diatoms shrink with every division, and
+# their proportions change as they do, so size and aspect ratio get generous priors.
 FEATURE_GROUPS = {
-    "shape": {"log_aspect": 0.12, "solidity": 0.03, "rect_fill": 0.05, "ellipse_iou": 0.05, "circularity": 0.06},
-    "size": {"log_length_um": 0.25, "log_width_um": 0.2},
+    "shape": {"log_aspect": 0.25, "solidity": 0.03, "rect_fill": 0.05, "ellipse_iou": 0.05, "circularity": 0.06},
+    "size": {"log_length_um": 0.35, "log_width_um": 0.25},
     "pores": {"log_pore_d_um": 0.2, "log_pore_density": 0.3, "porosity": 0.05, "log_pore_nn_um": 0.15},
     "texture": {f"lbp_{i}": 0.03 for i in range(10)},
     "contour": {f"fd_{k}": 0.03 for k in range(2, 7)},
@@ -96,17 +101,24 @@ def extract_features(fr, image, labels, um_per_px):
     return feats
 
 
-def feature_distance(a, b, groups=None):
-    """Scaled distance between two feature dicts, ignoring features missing on either side."""
+PRIOR_WEIGHT = 3  # the prior counts as this many examples when learning a species' spread
+
+
+def feature_distance(a, b, groups=None, scales=None):
+    """Scaled distance between two feature dicts, ignoring features missing on either side.
+
+    ``scales`` optionally overrides the prior spread of individual features.
+    """
     group_sq = []
-    for group, scales in FEATURE_GROUPS.items():
+    for group, priors in FEATURE_GROUPS.items():
         if groups and group not in groups:
             continue
         terms = []
-        for name, scale in scales.items():
+        for name, prior in priors.items():
             va, vb = a.get(name), b.get(name)
             if va is None or vb is None or not (np.isfinite(va) and np.isfinite(vb)):
                 continue
+            scale = scales.get(name, prior) if scales else prior
             terms.append(((va - vb) / scale) ** 2)
         if terms:
             group_sq.append(float(np.mean(terms)))
@@ -125,6 +137,7 @@ class SpeciesLibrary:
 
     def reload(self):
         self.exemplars = []
+        self._scales = None
         if not self.root.exists():
             return
         for species_dir in sorted(p for p in self.root.iterdir() if p.is_dir()):
@@ -170,10 +183,34 @@ class SpeciesLibrary:
     def __len__(self):
         return len(self.exemplars)
 
+    def add_features(self, species, features):
+        """In-memory exemplar (not written to disk), e.g. for benchmarking."""
+        self.exemplars.append((species, features, None))
+        self._scales = None
+
+    def species_scales(self, species):
+        """Per-feature spread of one species: the prior, updated by its examples' own variance."""
+        if getattr(self, "_scales", None) is None:
+            self._scales = {}
+        if species not in self._scales:
+            rows = [f for s, f, _ in self.exemplars if s == species]
+            learned = {}
+            for priors in FEATURE_GROUPS.values():
+                for name, prior in priors.items():
+                    vals = np.array([r.get(name, np.nan) for r in rows], dtype=float)
+                    vals = vals[np.isfinite(vals)]
+                    n = len(vals)
+                    if n >= 2:
+                        var = float(np.var(vals, ddof=1))
+                        learned[name] = math.sqrt((PRIOR_WEIGHT * prior**2 + (n - 1) * var)
+                                                  / (PRIOR_WEIGHT + n - 1))
+            self._scales[species] = learned
+        return self._scales[species]
+
     def add(self, species, fr, image, source_name, um_per_px):
         folder = self.root / _safe_name(species)
         folder.mkdir(parents=True, exist_ok=True)
-        stem = f"ex_{time.strftime('%Y%m%d_%H%M%S')}_{fr.frustule_id}"
+        stem = f"ex_{time.strftime('%Y%m%d_%H%M%S')}_{fr.frustule_id}_{uuid.uuid4().hex[:6]}"
         r0, c0, r1, c1 = fr.bbox
         crop = np.clip(image[r0:r1, c0:c1] * 255, 0, 255).astype(np.uint8)
         cv2.imwrite(str(folder / f"{stem}.png"), crop)
@@ -181,6 +218,7 @@ class SpeciesLibrary:
                    "frustule_id": fr.frustule_id, "um_per_px": um_per_px}
         (folder / f"{stem}.json").write_text(json.dumps(payload, indent=1, default=float))
         self.exemplars.append((folder.name, fr.features, folder / f"{stem}.json"))
+        self._scales = None
 
     def reference(self, species):
         """Mean feature values of a species' exemplars (its typical outline)."""
@@ -194,13 +232,14 @@ class SpeciesLibrary:
                 out[key] = float(np.mean(vals))
         return out
 
-    def classify(self, features, k=3, unknown_distance=3.0, groups=None):
+    def classify(self, features, k=3, unknown_distance=1.5, groups=None):
         """Return (species, confidence 0-1, distance). ``groups`` restricts the features compared."""
         if not self.exemplars:
             return "", 0.0, float("inf")
         per_species = {}
         for species, ex, _ in self.exemplars:
-            per_species.setdefault(species, []).append(feature_distance(features, ex, groups))
+            per_species.setdefault(species, []).append(
+                feature_distance(features, ex, groups, self.species_scales(species)))
         class_d = {s: float(np.mean(sorted(d)[:k])) for s, d in per_species.items()}
         best = min(class_d, key=class_d.get)
         d_best = class_d[best]

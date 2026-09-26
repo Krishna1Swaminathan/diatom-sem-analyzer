@@ -32,6 +32,25 @@ def _flatten_background(img, bright_bg):
     return img - surface + surface.mean()
 
 
+def _watershed_pieces(mask, dist, h):
+    """Split ``mask`` at distance-transform peaks that stand at least ``h`` above their saddles.
+
+    h-maxima are taken as regional maxima of the reconstruction, so a flat ridge (a linear
+    pennate) stays one plateau; skimage's h_maxima marks each one-pixel bump on it separately.
+    """
+    rec = morphology.reconstruction(dist - h, dist, method="dilation")
+    peaks = morphology.local_maxima(rec, connectivity=2) & mask
+    markers, n = ndi.label(peaks, structure=np.ones((3, 3)))
+    if n < 2:
+        return None
+    return segmentation.watershed(-dist, markers, mask=mask)
+
+
+def _solidity(mask):
+    props = measure.regionprops(mask.astype(np.uint8))
+    return props[0].solidity if props else 0.0
+
+
 def _split_touching(labels, prominence):
     out = np.zeros_like(labels)
     next_id = 1
@@ -41,10 +60,17 @@ def _split_touching(labels, prominence):
         pieces = None
         if region.solidity < 0.95:
             dist = ndi.distance_transform_edt(np.pad(mask, 1))[1:-1, 1:-1]
-            peaks = morphology.h_maxima(dist, max(2.0, prominence * dist.max()))
-            markers, n = ndi.label(peaks)
-            if n > 1:
-                pieces = segmentation.watershed(-dist, markers, mask=mask)
+            pieces = _watershed_pieces(mask, dist, max(2.0, prominence * dist.max()))
+            if pieces is None and region.solidity < 0.85:
+                # A thin frustule touching a fat one has a low peak next to a high one. Try a
+                # more sensitive split, kept only if it turns a non-convex blob into convex parts.
+                trial = _watershed_pieces(mask, dist, max(2.0, 0.1 * dist.max()))
+                if trial is not None:
+                    parts = [trial == k for k in range(1, trial.max() + 1)]
+                    parts = [pt for pt in parts if pt.any()]
+                    if (min(pt.sum() for pt in parts) >= 0.08 * region.area
+                            and min(_solidity(pt) for pt in parts) >= 0.9):
+                        pieces = trial
         if pieces is None:
             out[sl][mask] = next_id
             next_id += 1
@@ -75,7 +101,11 @@ def _segment_classical(image, min_area_px, cfg, close_px):
     small = np.nonzero(np.bincount(labels.ravel()) < min_area_px)[0]
     labels[np.isin(labels, small[small > 0])] = 0
     if cfg.split_touching:
-        labels = _split_touching(labels, cfg.split_prominence)
+        for _ in range(3):  # a blob of three frustules may need two rounds
+            split = _split_touching(labels, cfg.split_prominence)
+            if split.max() == labels.max():
+                break
+            labels = split
     return labels
 
 

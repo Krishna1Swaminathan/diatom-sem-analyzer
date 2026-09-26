@@ -110,47 +110,78 @@ hysteresis thresholding, and each pore's outline is taken at **half its own dept
 full-width-at-half-maximum convention), so diameters don't depend on a global threshold. Long, thin
 dark features are kept separately as crack candidates.
 
-**5. Damage** (`damage.py`): *fragmented* if the outline is far from any regular shape (low solidity,
-poor fit to both an ellipse and a rectangle, or a deep bite out of the margin); *cracked* if a long
-crack line crosses the shell or the outline has a notch; otherwise *intact*. When a frustule confidently
-matches a species in your library, the outline tests are made **relative to that species' own typical
-shape**, so naturally irregular species aren't mistaken for fragments.
+**5. Damage** (`damage.py`): intact valves have smooth outlines, even when they are crescent-shaped or
+triangular, while broken edges meet the natural margin at **sharp inward corners**. So a frustule is
+*fragmented* if its outline has an inward corner sharper than 40°, very low solidity, or a deep bite
+out of the margin; *cracked* if a long crack line crosses the shell or there is a smaller chip; and
+otherwise *intact*. Cuts made when separating touching frustules are ignored. A species library can
+relax the solidity test for naturally concave species, but never makes the rules stricter.
 
 **6. Species** (`classification.py`): few-shot matching against your reference library, using
 rotation-invariant descriptors: outline (Fourier descriptors, aspect, solidity), size, pore pattern
 (diameter, density, nearest-neighbour spacing, porosity) and surface texture (local binary patterns).
-Each feature is scaled by a typical within-species variation, and a match that is too far from every
-species is reported as *unknown*. Fragments are matched on pore pattern and texture only.
+Each feature is scaled by a typical within-species variation: built-in priors with one example,
+then **learned from the examples themselves** as you add more (the "training" step). A match that is
+too far from every species is reported as *unknown*. Fragments are matched on pore pattern and texture
+only.
 
 ## Accuracy on images with known answers
 
-The repository includes a generator of synthetic SEM frames with exact ground truth
-(`diatom_analyzer/synthetic.py`): centric, pennate and girdle-view frustules with pore lattices, a
-crack, a fragment, a touching pair, noise, uneven illumination and a databar with a scale bar.
-Over 10 frames (70 frustules) at 25 and 50 nm/pixel, with the scale read automatically from the bar:
+`diatom_analyzer/synthetic.py` renders SEM-style frames with exact ground truth: seven look-alike
+species (small and large centrics, a triangular centric, pointed, linear and needle-like pennates, and a
+crescent-shaped one), each with natural size variation, placed at random with random cracks and breaks,
+at 35-70 nm/pixel, with noise, uneven illumination and a databar scale bar.
+
+`python -m diatom_analyzer.evaluate synthetic` on 30 random frames (143 frustules; full report in
+[`reports/synthetic/report.md`](reports/synthetic/report.md)):
 
 | Measure | Result |
 |---|---|
-| Frustules counted | 70 / 70 |
-| Damage grade correct | 70 / 70 |
-| Scale (from scale-bar OCR) | exact |
-| Length | mean error 1.3 %, worst 2.5 % |
-| Orientation | mean error 0.2°, worst 0.7° |
-| Pore count | mean error 0.3 %, worst 2.6 % |
-| Pore diameter | reads 9-33 nm large (about half a pixel of optical blur) |
+| Frustules found (IoU ≥ 0.5) | 143 / 143, no false detections |
+| Scale read from the scale bar | 30 / 30 images |
+| Length | mean error 0.5 % |
+| Orientation | mean error 0.02°, worst 0.18° |
+| Pore count | mean error 1.2 % |
+| Pore diameter | reads 16 nm large on average (optical blur) |
+| Damage grade (no library) | 99.3 % |
+| Species, 1 / 3 / 5 examples per species | 88 % / 95 % / 99 % |
+| Species missing from the library reported as *unknown* | 71 % (the rest get a look-alike's name) |
+| Time per image | about 1.7 s on one CPU core |
 
-Run `pytest` to reproduce the 38 automated checks, which also cover metadata formats, resized images,
-16-bit TIFFs, JPEGs, dark-on-bright images, edge-cut frustules and species matching.
+**Crowded scenes** (frustules touching and overlapping, `--crowded`,
+[`reports/synthetic_crowded/report.md`](reports/synthetic_crowded/report.md)) are harder: 84 % of
+frustules found with 97 % precision, and 82 % damage accuracy. A frustule lying across another has no
+narrow neck to split at; this is where the optional Cellpose backend is meant to help.
+
+Run `pytest` for the 44 automated checks (metadata formats, resized images, 16-bit TIFFs, JPEGs,
+dark-on-bright images, edge-cut frustules, species matching, dataset importers).
+
+## Testing and training on real datasets
+
+The evaluator also reads the two common layouts of labelled diatom collections:
+
+```
+# Pascal VOC boxes, e.g. the Kaggle "Diatom Dataset": detection precision/recall + species accuracy
+python -m diatom_analyzer.evaluate voc path/to/dataset --shots 5
+
+# one sub-folder of images per species, e.g. ADIAC: few-shot species accuracy
+python -m diatom_analyzer.evaluate folders path/to/species_folders --shots 5
+
+# turn a labelled collection into a species library the app uses ("training")
+python -m diatom_analyzer.evaluate build-library path/to/species_folders --format folders --out species_library
+```
+
+In the app, *Species library → Import labelled examples* does the same from a .zip of species folders.
 
 ## Limitations and next steps
 
 - **Validate on the lab's own images.** Synthetic images prove the maths, not the realism. The first
   step with real data is to hand-measure a few images and compare them with the spreadsheet. Every
   threshold is adjustable in *Advanced settings*.
-- **Damage and view are rule-based.** Crescent-shaped or strongly asymmetric species (e.g. *Cymbella*,
-  *Eunotia*) may be graded *fragmented* until they are added to the species library.
+- **Damage and view are rule-based.** They are validated on synthetic breaks; real fracture edges should
+  be checked against a few hand-graded lab images, and the corner threshold adjusted if needed.
 - **Dense piles** of overlapping frustules (typical of raw diatomite powder) are harder to separate
-  with classical segmentation; the Cellpose backend is the upgrade path.
+  with classical segmentation (see the crowded benchmark); the Cellpose backend is the upgrade path.
 - **OCR on very small images** (under about 500 px wide) can misread labels. Readings are sanity-checked,
   and you can always type the value in.
 - Public diatom image datasets (e.g. the [Kaggle Diatom Dataset](https://www.kaggle.com/datasets/huseyingunduz/diatom-dataset),
@@ -173,8 +204,11 @@ diatom_analyzer/
   export.py                  Excel workbook
   visualize.py               annotated overlay
   synthetic.py               synthetic SEM images with ground truth
+  datasets.py                readers for labelled datasets (Pascal VOC, species folders)
+  evaluate.py                benchmarks, dataset evaluation and library building
   __main__.py                batch command line
 sample_data/                 demo images and their ground truth
+reports/                     benchmark reports
 tests/                       pytest suite
 ```
 

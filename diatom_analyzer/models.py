@@ -46,11 +46,13 @@ class Frustule:
     ellipse_iou: float
     circularity: float
     notch_depth_ratio: float
+    inward_corner_deg: float
     touches_border: bool
     view: str = "uncertain"
     morphotype: str = "unclassified"
     damage: str = "uncertain"
     crack_length_px: float = 0.0
+    crack_candidates: list = field(default_factory=list)
     species: str = ""  # "" = no species library loaded, "unknown" = no confident match
     species_confidence: float = 0.0
     species_distance: float = float("nan")
