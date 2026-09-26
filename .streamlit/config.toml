@@ -1,0 +1,16 @@
+# Settings for the Diatom Analyzer app (read automatically by Streamlit).
+
+[client]
+toolbarMode = "minimal"   # hide the developer menu and the "Deploy" button
+
+[browser]
+gatherUsageStats = false  # nothing is sent anywhere
+
+[server]
+address = "localhost"     # only this computer can open the app; images never reach the network
+maxUploadSize = 2000      # MB per file; SEM TIFFs can be large
+runOnSave = false
+
+[theme]
+base = "light"
+primaryColor = "#2a78d6"

@@ -11,12 +11,14 @@ pandas>=2.2
 openpyxl>=3.1
 
 # UI
-streamlit>=1.32
+streamlit>=1.40
 streamlit-image-coordinates>=0.4
+
+# Scale-bar text reading (used when the Tesseract program is installed; see README)
+pytesseract>=0.3.10
 
 # Testing
 pytest>=8.0
 
 # Optional (not required for core pipeline, see README):
-# pytesseract>=0.3.10   # scale-bar OCR fallback (needs system `tesseract` binary)
 # cellpose>=3.1,<4       # trainable detection model; Cellpose 3 trains on a laptop CPU

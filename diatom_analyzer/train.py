@@ -5,8 +5,8 @@ Save examples from the app (*Training labels* tab: `name.png` + `name_masks.png`
     python -m diatom_analyzer.train training_data                 # fine-tune the pretrained cyto3 model
     python -m diatom_analyzer.train training_data --from-scratch  # no download needed (offline)
 
-The trained model is written to `models/` and can be picked in the app under
-*Advanced settings → Detection mode → Cellpose*. A share of the examples is held back and the
+The trained model is written to `models/`; the app then offers *Use the lab's trained model* in
+step 2. A share of the examples is held back and the
 report gives precision and recall on them, so you can see whether more examples are needed.
 Requires `pip install "cellpose>=3.1,<4"` (the compact Cellpose 3 network trains on a laptop CPU).
 """

@@ -13,56 +13,68 @@ electron microscope (SEM) images of diatoms and, for every frustule in the frame
 | Pore spreadsheet | Every pore's coordinates and diameter in µm, plus porosity, pore density and spacing per frustule |
 | Scale from metadata or the scale bar | Read from microscope metadata, or found and read off the scale bar. **The pixel size is never hard-coded** |
 
-Everything runs locally: no cloud, no GPU, no training step, no programming.
+Everything runs locally on a laptop: no cloud, no GPU, no programming. Start it with a double-click.
 
 ---
 
-## Quick start (about 10 minutes, once)
+## Getting started (no programming needed)
 
-1. **Install Python 3.10 or newer** from [python.org](https://www.python.org/downloads/). On Windows,
-   tick *"Add Python to PATH"* during installation.
-2. **Download this project** (green *Code* button → *Download ZIP*) and unzip it.
-3. Open a terminal (Windows: *Command Prompt*; Mac: *Terminal*) in the project folder and run:
-   ```
-   pip install -r requirements.txt
-   ```
-4. *(Recommended)* Install **Tesseract OCR** so scale-bar labels can be read automatically:
-   - Windows: the installer from [UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki), then `pip install pytesseract`
-   - Mac: `brew install tesseract && pip install pytesseract`
-   - Linux: `sudo apt install tesseract-ocr && pip install pytesseract`
+**Once per computer** (about 10 minutes):
 
-   Without it, scales are still read from file metadata; for images that only have a burned-in scale
-   bar, the app finds the bar and asks you to type what it says ("10 µm").
-5. **Start the app:**
-   ```
-   streamlit run app.py
-   ```
-   Your browser opens the analyzer. Switch on *Include demo images* to try it right away.
+1. **Install Python** (version 3.10 or newer) from [python.org/downloads](https://www.python.org/downloads/).
+   On Windows, tick **"Add python.exe to PATH"** on the first screen of the installer.
+2. **Get the Diatom Analyzer folder:** on this project's GitHub page click the green **Code** button →
+   **Download ZIP**, and unzip it somewhere easy to find, such as your Desktop. (Or copy the folder
+   from a colleague.)
+
+**Every time you use it:** open the folder and double-click
+
+- **Mac:** `Start Diatom Analyzer (Mac).command`. The very first time, macOS may say it can't check the
+  file: **right-click (or Control-click) it → Open → Open**. After that a normal double-click works.
+- **Windows:** `Start Diatom Analyzer (Windows).bat`. If a blue *Windows protected your PC* box appears,
+  click **More info → Run anyway**.
+
+The first start sets everything up, which takes a few minutes and needs the internet once. After that
+it opens in about ten seconds. The analyzer opens in your web browser; a black window opens with it and
+must stay open while you work. **To quit,** close the browser tab and then the black window. Nothing is
+uploaded anywhere: the analyzer only answers to your own computer.
+
+*(Optional, for images whose scale is only written on the image and not stored in the file.)* To read
+scale-bar text automatically, install [Tesseract](https://github.com/UB-Mannheim/tesseract/wiki)
+(Windows installer) or run `brew install tesseract` (Mac). Without it, the analyzer asks you what the
+scale bar says. All of the lab's Phenom and Hitachi images carry their scale in the file, so they don't
+need it.
 
 ## Using the app
 
-1. **Add images** in the sidebar (TIFF, PNG, JPG, BMP; 8- or 16-bit; several at once).
-2. **Check the scale.** The *Scale* number above each image says where it came from
-   (`metadata:FEI/Thermo`, `scale_bar`, `manual`...). If none could be found, the app shows the scale
-   bar it detected and asks what length it represents.
-3. **Review** the annotated image. Outlines are coloured by damage (green intact, amber cracked,
-   red fragmented, grey uncertain), pores are circled in blue, and white lines show long axes.
-4. **Download** the spreadsheet (all images in one workbook), a pore CSV, or the annotated images.
-5. *(Optional)* **Teach species.** In the *Teach species* tab, pick a few frustule numbers, type the
-   species name and click *Add to library*. From then on, every image is compared with those examples.
-   Two or three good examples per species is enough to start; add more when it gets one wrong.
+The page walks you through four steps:
 
-6. *(When detection misses or invents frustules)* **Correct it by hand.** Above the annotated image, choose
-   *Add a missed frustule* and **drag along the frustule from tip to tip** (or click the centre of a round
-   one); its outline is traced automatically along its edges. Choose *Remove a detection* and click a
-   wrong one. *Undo last* and *Clear all* are next to the image. Every measurement updates, and manual
-   frustules are marked `manual` in the spreadsheet. For images the automatic modes cannot handle at all
-   (e.g. dense *Didymosphenia* on precipitate), pick *Detection mode → Manual only* and outline each one.
-7. *(Optional)* **Save the corrected outlines as training data** (*Training labels* tab) to train a
-   detection model for your own images; see *Training a detection model* below.
+1. **Add your images.** Drag SEM images (TIF, JPG, PNG; several at once is fine) into the box. For
+   Hitachi or JEOL images, add the `.txt` file that sits next to each image as well. No images to hand?
+   Click *Try it with example images*.
+2. **Describe the sample:** *diatoms lying apart from each other*, *many small round cells packed
+   together* (you give the rough cell size), or *crowded or messy: I will point out the diatoms myself*.
+   If the results look poor, try another description.
+3. **Check each image, and fix any mistakes.** The scale is shown in words (for example "1 pixel =
+   6.6 nm, from the microscope's file"); if it could not be found you are asked what the scale bar
+   says. Outlines are coloured by condition: green intact, amber cracked, red broken, grey cut off by
+   the image edge. The table beside the image lists every diatom by the number shown on it.
+   - Missed a diatom? Choose **➕ Add a missed diatom** and **drag along it from one tip to the other**
+     (for a round one, just click its centre). The outline is traced for you.
+   - Wrong outline? Choose **➖ Remove a wrong one** and click it.
+   - **↶ Undo** takes back the last change. Every measurement updates straight away, and diatoms you
+     marked are labelled as yours in the spreadsheet.
+4. **Save your results:** one Excel file with every diatom, every pore, a summary per image and a sheet
+   explaining each column, plus the marked-up images.
 
-Thresholds (minimum object size, pore size range, damage sensitivity) are under *Advanced settings*.
-Every value used is recorded in the spreadsheet's *Settings* sheet, so results are reproducible.
+Under **More tools** you can teach the tool species names (pick a few diatoms by number and name the
+species; from then on it suggests names), add a whole reference collection, and save corrected images
+as training examples for a detection model (see *Training a detection model*). Fine-tuning settings
+(thresholds, folders, a scale for all images) are in the collapsed **Expert settings** panel on the
+left; everyday use never needs them. Every value used is recorded in the spreadsheet's *Settings*
+sheet, so results are reproducible.
+
+**For developers:** `pip install -r requirements.txt` then `streamlit run app.py` starts the same app.
 
 ### Batch mode (command line)
 
@@ -176,8 +188,8 @@ cultures, *Didymosphenia*, Richmond diatomite):
   checked**. Upload the Hitachi `.txt` files together with their TIFs in the app.
 - **Isolated frustules on a smooth background** (e.g. Richmond at 10 000x, single cells at 29 000x):
   outlined and measured well by the general mode.
-- **Crowded round cells** (*Thalassiosira* cultures): use *Detection mode → Round centric cells* and set
-  the diameter range to the expected size. On the culture images it finds most cells with few false
+- **Crowded round cells** (*Thalassiosira* cultures): choose *Many small round cells packed together* in step 2
+  and give the rough cell size. On the culture images it finds most cells with few false
   circles; damage is not graded in this mode.
 - **Not yet reliable:** dense fields of touching *Didymosphenia* on precipitate, and diatom fragments among
   mineral grains (raw Richmond diatomite). Classical thresholding cannot separate these from the
@@ -206,8 +218,9 @@ The classical detectors cannot separate every kind of scene. For those, the app'
 become training data for [Cellpose](https://github.com/MouseLand/cellpose), an open-source
 segmentation network:
 
-1. In the app, outline frustules on a handful of representative images (fix automatic detections or use
-   *Manual only*) and press *Save outlines as a training example* on each. Ten to twenty images with every
+1. In the app, outline frustules on a handful of representative images (fix automatic detections, or describe the
+   sample as *crowded or messy* and mark them yourself) and save each one under *More tools → Help the
+   tool learn to find diatoms*. Ten to twenty images with every
    frustule outlined is a good start.
 2. Install Cellpose (the compact version 3 network trains on a laptop CPU):
    ```
@@ -219,7 +232,7 @@ segmentation network:
    ```
    A quarter of the examples are held back, and the report gives precision and recall on them.
    Add `--from-scratch` to train without downloading the pretrained model.
-4. In the app, choose *Detection mode → Cellpose* and pick your model (saved in `models/`).
+4. In the app, step 2 now offers *Use the lab's trained model* (models are saved in `models/`).
 
 Checked end to end on synthetic crowded scenes (the case where the classical detector struggles):
 a model trained from scratch on 12 frames (39 min on a laptop-class CPU, no GPU) found 96 % of the
@@ -246,6 +259,8 @@ the held-out report tells you where you stand.
 ## Project layout
 
 ```
+Start Diatom Analyzer (Mac).command      double-click to start (Mac)
+Start Diatom Analyzer (Windows).bat      double-click to start (Windows)
 app.py                       point-and-click interface (Streamlit)
 diatom_analyzer/
   calibration.py             scale from metadata, scale bar + OCR, HFW
