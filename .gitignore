@@ -7,5 +7,4 @@ venv/
 .DS_Store
 outputs/
 *.xlsx.tmp
-.streamlit/
 training_data/

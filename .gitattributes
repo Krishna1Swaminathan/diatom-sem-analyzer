@@ -1,0 +1,3 @@
+# Launchers must keep their native line endings wherever they are checked out or downloaded.
+*.bat -text
+*.command text eol=lf
