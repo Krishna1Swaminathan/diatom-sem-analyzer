@@ -41,6 +41,19 @@ def _shell_level(crop, mask, radius):
     return level
 
 
+def _runs_lengthwise(region, along_v):
+    """True for a dark line within 15° of the frustule's long axis.
+
+    Pennate valves carry natural lengthwise grooves: the raphe along the midline, the junction
+    between valve face and mantle near the margin, longitudinal canals. Breaks run across a valve.
+    """
+    ys, xs = region.coords[:, 0].astype(float), region.coords[:, 1].astype(float)
+    pts = np.stack([xs - xs.mean(), ys - ys.mean()])
+    evals, evecs = np.linalg.eigh(pts @ pts.T)
+    direction = evecs[:, np.argmax(evals)]
+    return abs(float(direction @ along_v)) >= np.cos(np.radians(15))
+
+
 def detect_pores(image, labels, fr, um_per_px, cfg=None):
     """Return (pores, crack_candidates) for one frustule.
 
@@ -81,12 +94,17 @@ def detect_pores(image, labels, fr, um_per_px, cfg=None):
         return [], []
 
     crack_len_min = max(8.0, 0.15 * fr.length_px)
+    along_v, across_v = frustule_axes(fr)
+    cx, cy = fr.centroid_px
     cracks, crack_ids = [], []
     for region in measure.regionprops(comp):
         major, minor = region.axis_major_length, max(region.axis_minor_length, 1.0)
-        if major >= crack_len_min and major / minor >= 4:
-            cracks.append(float(major))
-            crack_ids.append(region.label)
+        if major < crack_len_min or major / minor < 4:
+            continue
+        if fr.orientation_deg is not None and _runs_lengthwise(region, along_v):
+            continue  # raphe or margin groove: natural lengthwise structure, not a crack
+        cracks.append(float(major))
+        crack_ids.append(region.label)
     in_crack = np.isin(comp, crack_ids) if crack_ids else np.zeros_like(inner)
 
     # Re-threshold every candidate at half its own peak depth (FWHM-style extent).
@@ -96,8 +114,6 @@ def detect_pores(image, labels, fr, um_per_px, cfg=None):
     pore_labels = measure.label((grown > 0) & half)
 
     rim = inner & ~ndi.binary_erosion(inner, iterations=1)
-    along_v, across_v = frustule_axes(fr)
-    cx, cy = fr.centroid_px
 
     pores = []
     for region in measure.regionprops(pore_labels):

@@ -86,6 +86,41 @@ def _split_touching(labels, prominence):
     return out
 
 
+def _tidy_outlines(labels):
+    """Remove debris stuck to an outline and close hairline slits along its margin.
+
+    Both are thin compared with the frustule itself, so each outline is closed and opened at a scale
+    relative to its own width (6 % and 4 %). A real break removes a large piece and survives this.
+    The tidy-up is skipped when it would change the area by more than a quarter.
+    """
+    out = np.zeros_like(labels)
+    for region in measure.regionprops(labels):
+        mask = region.image
+        width = region.axis_minor_length
+        r_close = int(round(0.06 * width))
+        r_open = int(round(0.04 * width))
+        if r_close < 2:
+            out[region.slice][mask] = region.label
+            continue
+        pad = r_close + 2
+        work = np.pad(mask, pad)
+        work = ndi.binary_closing(work, structure=morphology.disk(r_close))
+        work = ndi.binary_fill_holes(work)
+        if r_open >= 1:
+            work = ndi.binary_opening(work, structure=morphology.disk(r_open))
+        comp, n = ndi.label(work)
+        if n:
+            sizes = np.bincount(comp.ravel())
+            sizes[0] = 0
+            work = comp == int(np.argmax(sizes))
+        work = work[pad:-pad, pad:-pad]
+        if abs(int(work.sum()) - int(mask.sum())) > 0.25 * mask.sum():
+            work = mask
+        view = out[region.slice]
+        view[work & (view == 0)] = region.label
+    return out
+
+
 def _segment_classical(image, min_area_px, cfg, close_px):
     sigma = max(1.5, min(image.shape) / 500)
     smooth = filters.gaussian(image, sigma)
@@ -109,7 +144,7 @@ def _segment_classical(image, min_area_px, cfg, close_px):
             if split.max() == labels.max():
                 break
             labels = split
-    return labels
+    return _tidy_outlines(labels)
 
 
 _CELLPOSE_CACHE = {}

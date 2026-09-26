@@ -57,6 +57,47 @@ SAMPLE_TYPES = {
 st.set_page_config(page_title="Diatom Analyzer", page_icon="🔬", layout="wide",
                    initial_sidebar_state="collapsed")
 
+
+LOGO_SVG = (
+    "<svg width='64' height='64' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'>"
+    "<circle cx='32' cy='32' r='29' fill='rgba(255,255,255,0.12)' stroke='#ffffff' stroke-width='2.5'/>"
+    + "".join(f"<circle cx='{32 + r * np.cos(a):.1f}' cy='{32 + r * np.sin(a):.1f}' r='{2.4 if r > 10 else 2.0}' "
+              f"fill='#ffffff' opacity='{0.95 if r > 10 else 0.8}'/>"
+              for r, n in ((21, 16), (13, 10), (6, 5)) for a in np.linspace(0, 2 * np.pi, n, endpoint=False))
+    + "<circle cx='32' cy='32' r='2.6' fill='#ffffff'/></svg>")
+
+st.markdown("""
+<style>
+:root { --da-blue: #2a78d6; --da-navy: #0f2747; --da-ink: #10233f; --da-muted: #5b6b82;
+        --da-surface: #f5f8fc; --da-border: #dfe6ef; }
+.block-container { max-width: 1280px; padding-top: 1.6rem; }
+.da-hero { background: linear-gradient(120deg, #0f2747 0%, #174a8c 55%, #2a78d6 100%); color: #fff;
+           border-radius: 20px; padding: 26px 32px; display: flex; gap: 24px; align-items: center;
+           box-shadow: 0 10px 30px rgba(15, 39, 71, 0.18); margin-bottom: 6px; }
+.da-hero h1 { color: #fff; font-size: 2.15rem; line-height: 1.15; margin: 0; padding: 0; font-weight: 800; }
+.da-hero p { color: #dce8f8; margin: 6px 0 0 0; font-size: 1.06rem; }
+.da-pills span { display: inline-block; background: rgba(255,255,255,0.13); border: 1px solid rgba(255,255,255,0.28);
+                 border-radius: 999px; padding: 3px 12px; margin: 12px 8px 0 0; font-size: 0.85rem; color: #fff; }
+.da-step { display: flex; align-items: center; gap: 14px; margin: 34px 0 10px 0; }
+.da-step .num { width: 38px; height: 38px; border-radius: 50%; background: var(--da-blue); color: #fff; flex: none;
+                display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.1rem;
+                box-shadow: 0 3px 10px rgba(42, 120, 214, 0.35); }
+.da-step .title { font-size: 1.45rem; font-weight: 750; color: var(--da-ink); line-height: 1.2; }
+.da-step .hint { color: var(--da-muted); font-size: 0.95rem; margin-top: 2px; }
+[data-testid="stMetric"] { background: var(--da-surface); border: 1px solid var(--da-border); border-radius: 14px;
+                           padding: 12px 18px; }
+[data-testid="stMetricValue"] { color: var(--da-ink); font-weight: 750; }
+[data-testid="stImage"] img, iframe[title*="streamlit_image_coordinates"] { border-radius: 12px; }
+.stDownloadButton button { padding-top: 0.7rem; padding-bottom: 0.7rem; font-weight: 650; }
+</style>
+""", unsafe_allow_html=True)
+
+
+def step(number, title, hint=""):
+    hint_html = f"<div class='hint'>{hint}</div>" if hint else ""
+    st.markdown(f"<div class='da-step'><div class='num'>{number}</div><div><div class='title'>{title}</div>"
+                f"{hint_html}</div></div>", unsafe_allow_html=True)
+
 state = st.session_state
 state.setdefault("overrides", {})  # image name -> scale corrections
 state.setdefault("use_demo", False)
@@ -203,7 +244,7 @@ with st.sidebar:
                                  help="Lower finds fainter pores; higher keeps only clear ones.")
 
     st.subheader("Damage grading")
-    frag_corner = st.slider("Broken if the outline has a sharp inward corner above (°)", 20, 90, 40, 1,
+    frag_corner = st.slider("Broken if the outline has a sharp inward corner above (°)", 5, 90, 20, 1,
                             help="Broken edges meet the natural outline at sharp inward corners; intact "
                                  "outlines curve smoothly.")
     frag_solidity = st.slider("Broken if solidity below", 0.5, 0.95, 0.85, 0.01,
@@ -220,11 +261,15 @@ library = SpeciesLibrary(library_dir)
 
 # --------------------------------------------------------------------------- header + step 1
 
-st.title("🔬 Diatom Analyzer")
-st.markdown("Count and measure the diatoms in scanning-electron-microscope images. "
-            "Your images stay on this computer.")
+st.markdown(f"""
+<div class="da-hero">{LOGO_SVG}
+  <div><h1>Diatom Analyzer</h1>
+  <p>Count, measure and grade every diatom in your scanning-electron-microscope images.</p>
+  <div class="da-pills"><span>Sizes in µm from the microscope's own scale</span><span>Every pore measured</span>
+  <span>Intact · cracked · broken</span><span>Runs only on this computer</span></div></div>
+</div>""", unsafe_allow_html=True)
 
-st.subheader("1 · Add your images")
+step(1, "Add your images", "Drag in one image or a whole batch.")
 uploads = st.file_uploader(
     "Drag SEM images here, or click *Browse files*. TIF, JPG and PNG all work.",
     type=[s.strip(".") for s in IMAGE_SUFFIXES] + ["txt"], accept_multiple_files=True,
@@ -258,7 +303,7 @@ if not sources:
 
 # --------------------------------------------------------------------------- step 2
 
-st.subheader("2 · What does your sample look like?")
+step(2, "What does your sample look like?", "This tells the tool how to find the diatoms.")
 options = ["apart", "round", "manual"] + (["model"] if trained_models() else [])
 sample = st.radio("Choose the description that fits best. You can change it at any time.", options,
                   format_func=lambda k: SAMPLE_TYPES[k][0], captions=[SAMPLE_TYPES[k][1] for k in options],
@@ -309,7 +354,7 @@ config = build_config(dict(settings_key))
 
 # --------------------------------------------------------------------------- step 3
 
-st.subheader("3 · Check each image, and fix any mistakes")
+step(3, "Check each image, and fix any mistakes", "Outlines are coloured by condition.")
 names = [r.name for r in results]
 
 
@@ -465,7 +510,7 @@ with st.expander("More details for this image (every measurement, pores, size ch
 
 # --------------------------------------------------------------------------- step 4
 
-st.subheader("4 · Save your results")
+step(4, "Save your results", "Everything in one Excel file, ready for analysis.")
 all_rows = [r for x in results for r in frustule_rows(x)]
 st.markdown(f"**{len(results)} image(s), {len(all_rows)} diatoms.** The spreadsheet has one sheet listing every "
             "diatom, one listing every pore, a summary per image, and a sheet explaining every column.")

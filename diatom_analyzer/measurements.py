@@ -4,8 +4,10 @@ import math
 
 import cv2
 import numpy as np
+from scipy import ndimage as ndi
 from scipy.ndimage import gaussian_filter1d
 from skimage import measure
+from skimage.morphology import disk
 
 from .config import ViewConfig
 from .models import Frustule
@@ -92,6 +94,27 @@ def _sharpest_inward_corner(contour, window=0.02, ignore=None):
     return float(np.degrees(inward.max()))
 
 
+def _damage_view(mask, width):
+    """The outline as the damage tests see it: attachments narrower than ~30 % of the width removed.
+
+    Debris stuck to a valve makes deep notches and sharp inward corners where it joins, yet is far
+    narrower than the valve; a real break removes a large piece and survives this smoothing.
+    Measurements (length, width, area) still use the full outline.
+    """
+    r = int(round(0.15 * width))
+    if r < 2:
+        return mask
+    pad = r + 1
+    opened = ndi.binary_opening(np.pad(mask, pad), structure=disk(r))[pad:-pad, pad:-pad]
+    comp, n = ndi.label(opened)
+    if not n:
+        return mask
+    sizes = np.bincount(comp.ravel())
+    sizes[0] = 0
+    main = comp == int(np.argmax(sizes))
+    return main if main.sum() >= 0.5 * mask.sum() else mask
+
+
 def classify_view(fr, cfg):
     if fr.rect_fill >= cfg.girdle_rect_fill:
         return "girdle"
@@ -136,6 +159,9 @@ def measure_frustules(labels, analysis_shape=None, exclude_boxes=()):
             if not (max_c < x0 or min_c > x1 or max_r < y0 or min_r > y1):
                 touches = True
         aspect = length / width if width else 1.0
+        damage_mask = _damage_view(region.image, width)
+        damage_contour = _largest_contour(damage_mask) if damage_mask is not region.image else contour
+        damage_region = measure.regionprops(damage_mask.astype(np.uint8))[0]
         cy, cx = region.centroid
         fr = Frustule(
             frustule_id=region.label,
@@ -146,12 +172,12 @@ def measure_frustules(labels, analysis_shape=None, exclude_boxes=()):
             width_px=float(width),
             equiv_diameter_px=float(region.equivalent_diameter_area),
             orientation_deg=None,
-            solidity=float(region.solidity),
+            solidity=float(damage_region.solidity),
             rect_fill=float(min(1.0, area / (length * width))),
             ellipse_iou=_ellipse_iou(region),
             circularity=float(min(1.0, 4 * math.pi * area / perimeter**2)),
-            notch_depth_ratio=_notch_depth(contour) / width if width else 0.0,
-            inward_corner_deg=_sharpest_inward_corner(contour, ignore=contact),
+            notch_depth_ratio=_notch_depth(damage_contour) / width if width else 0.0,
+            inward_corner_deg=_sharpest_inward_corner(damage_contour, window=0.04, ignore=contact),
             touches_border=bool(touches),
         )
         if aspect >= ViewConfig().round_aspect:

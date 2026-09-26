@@ -21,7 +21,7 @@ def _metric(at, label):
 def test_opens_on_step_one_without_errors():
     at = _start()
     assert not at.exception
-    assert [s.value for s in at.subheader][:1] == ["1 · Add your images"]
+    assert any("Add your images" in m.value for m in at.markdown)
     assert any("example images" in b.label for b in at.button)
 
 
@@ -29,10 +29,10 @@ def test_example_images_walk_through():
     at = _start()
     next(b for b in at.button if "example images" in b.label).click().run()
     assert not at.exception
-    titles = [s.value for s in at.subheader]
-    for step in ("2 · What does your sample look like?", "3 · Check each image, and fix any mistakes",
-                 "4 · Save your results"):
-        assert step in titles
+    page = " ".join(m.value for m in at.markdown)
+    for step in ("What does your sample look like?", "Check each image, and fix any mistakes",
+                 "Save your results"):
+        assert step in page
     assert int(_metric(at, "Diatoms found")) > 0
     assert any("Scale:" in s.value for s in at.success)
 
