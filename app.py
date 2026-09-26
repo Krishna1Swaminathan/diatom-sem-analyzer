@@ -49,6 +49,7 @@ def build_config(s):
     cfg.segmentation.method = s["method"]
     cfg.segmentation.cell_diameter_um = tuple(s["cell_diameter"])
     cfg.segmentation.cell_roundness = s["cell_roundness"]
+    cfg.segmentation.cellpose_model = s.get("cellpose_model", "")
     cfg.segmentation.min_frustule_um = s["min_size_um"]
     cfg.segmentation.split_touching = s["split"]
     cfg.pores.min_diameter_um, cfg.pores.max_diameter_um = s["pore_range"]
@@ -195,8 +196,15 @@ with st.sidebar:
                  "is not graded in this mode. Manual only: start with nothing detected and outline each "
                  "frustule by dragging along it (for images the automatic modes cannot handle).")
         round_mode = methods[method_label] == "round_cells"
+        cellpose_model = ""
+        if methods[method_label] == "cellpose":
+            trained = sorted(str(p) for p in (HERE / "models").glob("*") if p.is_file() and p.suffix == "")
+            choice = st.selectbox("Cellpose model", trained + ["cyto3 (built-in, general cells)"],
+                                  help="Models you trained with `python -m diatom_analyzer.train` appear here.")
+            cellpose_model = "cyto3" if choice.startswith("cyto3") else choice
         settings = {
             "method": methods[method_label],
+            "cellpose_model": cellpose_model,
             "cell_diameter": st.slider("Cell diameter range (µm)", 0.5, 60.0, (2.0, 8.0), 0.5,
                                        disabled=not round_mode),
             "cell_roundness": st.slider("Rim completeness required", 0.3, 0.95, 0.5, 0.05,

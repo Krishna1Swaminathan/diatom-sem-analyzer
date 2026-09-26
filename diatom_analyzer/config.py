@@ -11,6 +11,7 @@ class SegmentationConfig:
     cell_diameter_um: tuple = (2.0, 8.0)  # round_cells: expected valve diameter range
     cell_edge_strength: int = 40  # round_cells: Canny threshold for rim edges (lower finds fainter rims)
     cell_roundness: float = 0.5  # round_cells: 0-1, how complete and circular a rim must be
+    cellpose_model: str = ""  # cellpose: path to a model trained on the lab's outlines, or a built-in name
 
 
 @dataclass
