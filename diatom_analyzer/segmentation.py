@@ -1,5 +1,6 @@
 """Find every frustule in the frame and return an instance label image."""
 
+import cv2
 import numpy as np
 from scipy import ndimage as ndi
 from skimage import filters, measure, morphology, segmentation
@@ -127,6 +128,43 @@ def _segment_cellpose(image, cfg):
     return np.asarray(masks, dtype=np.int32)
 
 
+def detect_round_cells(image, um_per_px, cfg):
+    """Round centric cells (e.g. Thalassiosira) in crowded or textured scenes.
+
+    Each valve's rim is a bright edge (often brightest on the side facing the detector), so a
+    Hough circle search over the expected diameter range finds cells that a global threshold
+    merges with their neighbours or with the substrate. Returns (labels, scores).
+    """
+    h, w = image.shape
+    d_min, d_max = cfg.cell_diameter_um
+    r_min = d_min / um_per_px / 2
+    r_max = d_max / um_per_px / 2
+    # Work at a resolution where the smallest cell is ~12 px across its radius, for speed.
+    scale = min(1.0, 12.0 / max(r_min, 1.0))
+    small = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1 else image
+    u8 = np.clip(small * 255, 0, 255).astype(np.uint8)
+    u8 = cv2.GaussianBlur(u8, (0, 0), max(1.0, r_min * scale / 6))
+    circles = cv2.HoughCircles(u8, cv2.HOUGH_GRADIENT_ALT, dp=1.5, minDist=max(4.0, 1.2 * r_min * scale),
+                               param1=cfg.cell_edge_strength, param2=cfg.cell_roundness,
+                               minRadius=max(3, int(r_min * scale)), maxRadius=max(4, int(np.ceil(r_max * scale))))
+    labels = np.zeros((h, w), np.int32)
+    if circles is None:
+        return labels
+    circles = circles.reshape(-1, 3) / scale
+    # Strongest-first: ALT returns circles sorted by accumulator score. Paint each onto free pixels.
+    next_id = 1
+    for x, y, r in circles:
+        disk = np.zeros((h, w), np.uint8)
+        cv2.circle(disk, (int(round(x)), int(round(y))), int(round(r)), 1, -1)
+        disk = disk.astype(bool)
+        free = disk & (labels == 0)
+        if free.sum() < 0.6 * disk.sum():
+            continue  # mostly inside a cell already found: a duplicate or an inner ring
+        labels[free] = next_id
+        next_id += 1
+    return labels
+
+
 def segment_frustules(image, um_per_px=None, cfg=None, exclude_boxes=()):
     """Label image (0 = background, 1..N = frustules) for a grayscale float image.
 
@@ -144,6 +182,10 @@ def segment_frustules(image, um_per_px=None, cfg=None, exclude_boxes=()):
 
     if cfg.method == "cellpose":
         labels = _segment_cellpose(img, cfg)
+    elif cfg.method == "round_cells":
+        if not um_per_px:
+            raise ValueError("Round-cell detection needs the image scale (µm per pixel).")
+        labels = detect_round_cells(img, um_per_px, cfg)
     else:
         labels = _segment_classical(img, min_area_px, cfg, close_px)
 

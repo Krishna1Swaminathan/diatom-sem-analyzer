@@ -153,8 +153,26 @@ at 35-70 nm/pixel, with noise, uneven illumination and a databar scale bar.
 frustules found with 97 % precision, and 82 % damage accuracy. A frustule lying across another has no
 narrow neck to split at; this is where the optional Cellpose backend is meant to help.
 
-Run `pytest` for the 44 automated checks (metadata formats, resized images, 16-bit TIFFs, JPEGs,
+Run `pytest` for the automated checks (metadata formats, resized images, 16-bit TIFFs, JPEGs,
 dark-on-bright images, edge-cut frustules, species matching, dataset importers).
+
+## Tested on the lab's own images
+
+123 SEM images from the lab (Thermo Fisher Phenom desktop SEM and Hitachi S-4700; *Thalassiosira*
+cultures, *Didymosphenia*, Richmond diatomite):
+
+- **Scale:** read from metadata for all 123 (Phenom JPG/TIFF embedded XML; Hitachi `.txt` via the
+  magnification, confirmed against the drawn tick ruler to 0.5 %). Reading the scale from the image
+  alone, as for a bare JPG, agrees with the metadata on **every one of the 122 images that can be
+  checked**. Upload the Hitachi `.txt` files together with their TIFs in the app.
+- **Isolated frustules on a smooth background** (e.g. Richmond at 10 000x, single cells at 29 000x):
+  outlined and measured well by the general mode.
+- **Crowded round cells** (*Thalassiosira* cultures): use *Detection mode → Round centric cells* and set
+  the diameter range to the expected size. On the culture images it finds most cells with few false
+  circles; damage is not graded in this mode.
+- **Not yet reliable:** dense fields of touching *Didymosphenia* on precipitate, and diatom fragments among
+  mineral grains (raw Richmond diatomite). Classical thresholding cannot separate these from the
+  background; a trained model (e.g. Cellpose fine-tuned on a few hand-outlined lab images) is the next step.
 
 ## Testing and training on real datasets
 
