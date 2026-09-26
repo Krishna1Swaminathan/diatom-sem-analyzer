@@ -1,0 +1,21 @@
+# Core pipeline
+numpy>=1.24
+scipy>=1.11
+scikit-image>=0.22
+opencv-python-headless>=4.9
+tifffile>=2024.2.12
+Pillow>=10.2
+
+# Measurements export
+pandas>=2.2
+openpyxl>=3.1
+
+# UI
+streamlit>=1.32
+
+# Testing
+pytest>=8.0
+
+# Optional (not required for core pipeline, see README):
+# pytesseract>=0.3.10   # scale-bar OCR fallback (needs system `tesseract` binary)
+# cellpose>=3.0          # deep-learning segmentation backend (needs torch, GPU optional)
