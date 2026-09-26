@@ -13,6 +13,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import tifffile
+from skimage import filters
 
 from .models import Calibration
 
@@ -94,30 +95,83 @@ def _from_imagej_or_resolution(tif):
     return None
 
 
-def _from_sidecar(path):
-    """JEOL and Hitachi instruments write calibration into a .txt next to the image."""
-    if path is None:
-        return None
-    for candidate in (Path(path).with_suffix(".txt"), Path(path).with_suffix(".TXT")):
-        if not candidate.exists():
-            continue
-        text = candidate.read_text(errors="ignore")
-        m = re.search(r"^\s*PixelSize\s*=\s*([\d.]+)", text, re.MULTILINE)
-        if m:  # Hitachi: nanometres per pixel
-            return float(m.group(1)) * 1e-3, "metadata:Hitachi .txt", {"PixelSize_nm": float(m.group(1))}
-        bar = re.search(r"\$\$SM_MICRON_BAR\s+([\d.]+)", text)
-        marker = re.search(r"\$\$SM_MICRON_MARKER\s+([\d.]+)\s*(nm|um|µm|mm)", text, re.IGNORECASE)
-        if bar and marker:  # JEOL: bar length in px and the length it represents
-            um = _parse_number(marker.group(1)) * _unit_factor(marker.group(2))
-            return um / float(bar.group(1)), "metadata:JEOL .txt", {"bar_px": float(bar.group(1)), "marker": marker.group(0)}
+# Hitachi S-series magnification is referenced to a 127 mm (5-inch photo) wide field of view.
+HITACHI_REFERENCE_WIDTH_UM = 127_000.0
+
+
+def parse_sidecar_text(text):
+    """Calibration from the .txt that JEOL and Hitachi instruments write next to each image."""
+    m = re.search(r"^\s*PixelSize\s*=\s*([\d.]+)", text, re.MULTILINE)
+    if m:  # Hitachi SU series: nanometres per pixel
+        return float(m.group(1)) * 1e-3, "metadata:Hitachi .txt", {"PixelSize_nm": float(m.group(1))}
+    bar = re.search(r"\$\$SM_MICRON_BAR\s+([\d.]+)", text)
+    marker = re.search(r"\$\$SM_MICRON_MARKER\s+([\d.]+)\s*(nm|um|µm|mm)", text, re.IGNORECASE)
+    if bar and marker:  # JEOL: bar length in px and the length it represents
+        um = _parse_number(marker.group(1)) * _unit_factor(marker.group(2))
+        return um / float(bar.group(1)), "metadata:JEOL .txt", {"bar_px": float(bar.group(1)), "marker": marker.group(0)}
+    mag = re.search(r"^\s*Magnification\s*=\s*([\d.]+)", text, re.MULTILINE)
+    size = re.search(r"^\s*DataSize\s*=\s*(\d+)\s*x\s*(\d+)", text, re.MULTILINE)
+    if mag and size and float(mag.group(1)) > 0:  # Hitachi S series (e.g. S-4700)
+        width = int(size.group(1))
+        um = HITACHI_REFERENCE_WIDTH_UM / float(mag.group(1)) / width
+        details = {"magnification": float(mag.group(1)), "data_width_px": width}
+        inst = re.search(r"^\s*InstructName\s*=\s*(\S+)", text, re.MULTILINE)
+        marker_nm = re.search(r"^\s*MicronMarker\s*=\s*([\d.]+)", text, re.MULTILINE)
+        if inst:
+            details["instrument"] = inst.group(1)
+        if marker_nm:
+            details["marker_um"] = float(marker_nm.group(1)) / 1000
+        return um, "metadata:Hitachi .txt (magnification)", details
     return None
 
 
-def calibration_from_metadata(path=None, data=None):
-    """Return (um_per_px, source, details) from embedded metadata, or None."""
-    sidecar = _from_sidecar(path)
+def _from_sidecar(path):
+    if path is None:
+        return None
+    for candidate in (Path(path).with_suffix(".txt"), Path(path).with_suffix(".TXT")):
+        if candidate.exists():
+            return parse_sidecar_text(candidate.read_text(errors="ignore"))
+    return None
+
+
+_PHENOM_PIXEL = re.compile(rb'<pixelWidth unit="(\w+)">([\d.eE+-]+)</pixelWidth>')
+_PHENOM_BAR = re.compile(rb"<databarHeight>(\d+)</databarHeight>")
+_PHENOM_EDITION = re.compile(rb"<edition>([^<]{1,60})</edition>")
+
+
+def _from_phenom_xml(data):
+    """Thermo Fisher Phenom desktop SEMs embed an XML block in JPG and TIFF files."""
+    if not data or b"<FeiImage" not in data:
+        return None
+    m = _PHENOM_PIXEL.search(data)
+    if not m:
+        return None
+    factor = _unit_factor(m.group(1).decode())
+    if not factor:
+        return None
+    details = {}
+    bar = _PHENOM_BAR.search(data)
+    if bar:
+        details["databar_height"] = int(bar.group(1))
+    edition = _PHENOM_EDITION.search(data)
+    if edition:
+        details["instrument"] = edition.group(1).decode(errors="ignore")
+    return float(m.group(2)) * factor, "metadata:Phenom XML", details
+
+
+def calibration_from_metadata(path=None, data=None, sidecar_text=None):
+    """Return (um_per_px, source, details) from embedded or sidecar metadata, or None."""
+    sidecar = parse_sidecar_text(sidecar_text) if sidecar_text else _from_sidecar(path)
     if sidecar:
         return sidecar
+    if data is None and path is not None:
+        try:
+            data = Path(path).read_bytes()
+        except OSError:
+            data = None
+    phenom = _from_phenom_xml(data)
+    if phenom and 0 < phenom[0] <= _MAX_PLAUSIBLE_UM_PER_PX:
+        return phenom
     try:
         handle = tifffile.TiffFile(io.BytesIO(data) if data is not None else path)
     except Exception:
@@ -164,13 +218,35 @@ def find_databar_top(image):
 # --------------------------------------------------------------------------- scale bar
 
 
-def find_scale_bar_candidates(image, search_top=0):
+def find_strip_bars(image, databar_top):
+    """Scale bars inside the information strip, thresholded against the strip's own background.
+
+    Strips draw the bar in grey as well as white, so a whole-image brightness cut can miss it.
+    """
+    h, w = image.shape
+    if databar_top >= h - 6:
+        return []
+    strip = image[databar_top:]
+    if strip.max() - strip.min() < 0.1:
+        return []
+    t = filters.threshold_otsu(strip)
+    binary = strip > t if strip.mean() < t else strip < t
+    found = find_scale_bar_candidates(strip, binaries=[("strip", binary)])
+    for c in found:
+        x0, y0, x1, y1 = c["bbox"]
+        c["bbox"] = (x0, y0 + databar_top, x1, y1 + databar_top)
+    return found
+
+
+def find_scale_bar_candidates(image, search_top=0, binaries=None):
     """Long, thin, solid, isolated horizontal bars. Returns dicts sorted best-first."""
     h, w = image.shape
     min_len = max(20, int(0.025 * w))
-    max_thick = max(3, int(0.03 * h))
+    max_thick = max(3, int(0.03 * h)) if binaries is None else max(3, int(0.25 * h))
     candidates = []
-    for polarity, binary in (("bright", image >= 0.8 * image.max()), ("dark", image <= 0.15)):
+    if binaries is None:
+        binaries = (("bright", image >= 0.8 * image.max()), ("dark", image <= 0.15))
+    for polarity, binary in binaries:
         binary = binary.astype(np.uint8)
         binary[:search_top] = 0
         _, parents, parent_stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
@@ -196,6 +272,45 @@ def find_scale_bar_candidates(image, search_top=0):
                                "polarity": polarity, "score": score})
     candidates.sort(key=lambda c: -c["score"])
     return candidates
+
+
+def find_tick_ruler(image, databar_top):
+    """Hitachi-style scale: a row of evenly spaced short ticks in the information strip.
+
+    Returns a bar-like dict whose length is the distance between the first and last tick.
+    """
+    h, w = image.shape
+    if databar_top >= h - 8:
+        return None
+    strip = image[databar_top:]
+    bright_text = strip.mean() < 0.5
+    binary = (strip >= 0.6 * strip.max()) if bright_text else (strip <= 0.4 * strip.max())
+    n, _, stats, cents = cv2.connectedComponentsWithStats(binary.astype(np.uint8), connectivity=8)
+    ticks = [(stats[i], cents[i]) for i in range(1, n)
+             if stats[i][2] <= 6 and stats[i][3] >= 4 and stats[i][3] >= 2 * stats[i][2]
+             and stats[i][3] <= 0.5 * strip.shape[0]]
+    rows = {}
+    for st, c in ticks:
+        rows.setdefault((round(st[1] / 3), round(st[3] / 3)), []).append((c[0], st))
+    best = None
+    for group in rows.values():
+        if len(group) < 5:
+            continue
+        group.sort(key=lambda g: g[0])
+        xs = np.array([g[0] for g in group])
+        gaps = np.diff(xs)
+        if gaps.mean() <= 3 or gaps.std() / gaps.mean() > 0.1:
+            continue
+        if best is None or len(group) > len(best):
+            best = group
+    if best is None:
+        return None
+    x0, x1 = best[0][0], best[-1][0]
+    y0 = min(g[1][1] for g in best) + databar_top
+    y1 = max(g[1][1] + g[1][3] for g in best) + databar_top
+    return {"bbox": (int(round(x0)), int(y0), int(round(x1)) + 1, int(y1)), "length_px": float(x1 - x0),
+            "polarity": "bright" if bright_text else "dark", "score": 0.0, "kind": "tick ruler",
+            "ticks": len(best)}
 
 
 def ocr_available():
@@ -237,36 +352,88 @@ def _is_round_value(value):
     return any(abs(mantissa - m) < 1e-6 for m in (1, 2, 2.5, 3, 4, 5))
 
 
-def read_bar_label(image, bbox):
-    """OCR the text near a scale bar and return (length_um, raw_text) or (None, raw_text).
+_TOKEN_RE = re.compile(r"^(\d+(?:[.,]\d+)?)\s*(nm|mm|[µμuyp]\s?m)$", re.IGNORECASE)
 
-    Labels are almost always centred above or below the bar, so those narrow regions are
-    tried first; text beside the bar (JEOL style) is the fallback, taking the match nearest
-    the bar so other databar fields (working distance, HV) are not mistaken for the label.
+
+def _ocr_tokens(region, scale, psm):
+    """Words with positions (in region pixels) from one OCR pass."""
+    import pytesseract
+    up = cv2.resize((region * 255).astype(np.uint8), None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+    _, bw = cv2.threshold(up, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    if (bw > 0).mean() < 0.5:
+        bw = 255 - bw  # tesseract wants dark text on a light page
+    pad = 20
+    bw = cv2.copyMakeBorder(bw, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=255)
+    try:
+        d = pytesseract.image_to_data(bw, config=f"--psm {psm}", output_type=pytesseract.Output.DICT)
+    except Exception:
+        return []
+    words = []
+    for i, text in enumerate(d["text"]):
+        text = text.strip()
+        if not text:
+            continue
+        x, y = (d["left"][i] - pad) / scale, (d["top"][i] - pad) / scale
+        words.append((text, x, y, d["width"][i] / scale, d["height"][i] / scale))
+    return words
+
+
+def _label_candidates(words):
+    """Number+unit tokens, allowing "40µm" as one word or "200 µm" as two adjacent words."""
+    words = sorted(words, key=lambda w: (round(w[2] / max(w[4], 1)), w[1]))
+    out = []
+    for i, (t, x, y, w, h) in enumerate(words):
+        options = [(t, (x, y, x + w, y + h))]
+        if i + 1 < len(words):
+            t2, x2, y2, w2, h2 = words[i + 1]
+            if abs(y2 - y) < 0.6 * max(h, h2) and 0 <= x2 - (x + w) < 1.5 * max(h, h2):
+                options.append((f"{t} {t2}", (x, min(y, y2), x2 + w2, max(y + h, y2 + h2))))
+        for text, box in options:
+            m = _TOKEN_RE.match(text.replace(",", "."))
+            if m and _parse_number(m.group(1)) > 0:
+                out.append((_parse_number(m.group(1)) * _unit_factor(m.group(2)), text, box))
+    return out
+
+
+def read_bar_label(image, bbox):
+    """OCR the scale-bar label and return (length_um, raw_text) or (None, raw_text).
+
+    Every number-with-unit near the bar is read; the one closest to the bar wins, so other
+    information-strip fields (field width, working distance) are not mistaken for it. Reading at
+    two magnifications and voting guards against single-digit misreads (5 vs 2, 8 vs 3).
     """
     h, w = image.shape
     x0, y0, x1, y1 = bbox
     bar_len = x1 - x0
     text_h = max(14, int(0.035 * h), 3 * (y1 - y0))
-    margin = max(4, bar_len // 10)
-    regions = [
-        ("above", max(0, y0 - 3 * text_h), y0, max(0, x0 - margin), min(w, x1 + margin)),
-        ("below", y1, min(h, y1 + 3 * text_h), max(0, x0 - margin), min(w, x1 + margin)),
-        ("right", max(0, y0 - text_h), min(h, y1 + text_h), min(w, x1 + 2), min(w, x1 + bar_len)),
-        ("left", max(0, y0 - text_h), min(h, y1 + text_h), max(0, x0 - bar_len), max(0, x0 - 2)),
-    ]
-    seen = []
-    for side, ra, rb, ca, cb in regions:
-        if rb - ra < 6 or cb - ca < 6:
-            continue
-        for text in _ocr(image[ra:rb, ca:cb]):
-            seen.append(text.strip())
-            matches = [m for m in _LABEL_RE.finditer(text) if _parse_number(m.group(1)) > 0]
-            if not matches:
-                continue
-            m = matches[-1] if side == "left" else matches[0]
-            return _parse_number(m.group(1)) * _unit_factor(m.group(2)), m.group(0)
-    return None, " | ".join(t for t in seen if t)
+    rx0, rx1 = max(0, int(x0 - 0.6 * bar_len)), min(w, int(x1 + 0.6 * bar_len))
+    ry0, ry1 = max(0, y0 - 3 * text_h), min(h, y1 + 3 * text_h)
+    region = image[ry0:ry1, rx0:rx1]
+    if region.size == 0:
+        return None, ""
+    votes, seen = {}, []
+    for scale in (3, 4):
+        for psm in (11, 6):
+            words = _ocr_tokens(region, scale, psm)
+            seen.extend(t for t, *_ in words)
+            best = None
+            for value, text, (bx0, by0, bx1, by1) in _label_candidates(words):
+                bx0, bx1, by0, by1 = bx0 + rx0, bx1 + rx0, by0 + ry0, by1 + ry0
+                dx = max(bx0 - x1, x0 - bx1, 0)
+                dy = max(by0 - y1, y0 - by1, 0)
+                dist = math.hypot(dx, dy)
+                if best is None or dist < best[0]:
+                    best = (dist, value, text)
+            if best is not None:
+                key = round(best[1], 6)
+                count, dist, text = votes.get(key, (0, best[0], best[2]))
+                votes[key] = (count + 1, min(dist, best[0]), text)
+                if count + 1 >= 2 and len(votes) == 1:
+                    return best[1], text  # two independent readings agree: done
+    if not votes:
+        return None, " ".join(dict.fromkeys(seen))[:200]
+    value, (count, dist, text) = max(votes.items(), key=lambda kv: (kv[1][0], -kv[1][1]))
+    return value, text
 
 
 def read_hfw(image, databar_top):
@@ -283,12 +450,27 @@ def read_hfw(image, databar_top):
 # --------------------------------------------------------------------------- orchestration
 
 
-def calibrate(image, path=None, data=None, manual_um_per_px=None, manual_bar_um=None, use_ocr=True):
-    """Work out µm/px. Priority: user override, metadata, scale bar (+OCR), HFW text."""
-    databar_top = find_databar_top(image)
-    bars = find_scale_bar_candidates(image)
+def calibrate(image, path=None, data=None, manual_um_per_px=None, manual_bar_um=None, use_ocr=True,
+              sidecar_text=None):
+    """Work out µm/px. Priority: user override, metadata, scale bar or tick ruler (+OCR), HFW text."""
+    meta = None
+    if path is not None or data is not None or sidecar_text:
+        meta = calibration_from_metadata(path, data, sidecar_text)
+    h = image.shape[0]
+    if meta and meta[2].get("databar_height"):
+        databar_top = max(0, h - int(meta[2]["databar_height"]))
+    else:
+        databar_top = find_databar_top(image)
+
+    # Prefer a bar in the information strip, then a tick ruler there, then a bar drawn in the image.
+    in_strip = find_strip_bars(image, databar_top) if databar_top < h else []
+    bars = in_strip or ([r] if databar_top < h and (r := find_tick_ruler(image, databar_top)) else [])
+    if not bars:
+        bars = find_scale_bar_candidates(image)
     bar = bars[0] if bars else None
     details = {"databar_top": databar_top, "bar_candidates": len(bars)}
+    if bar is not None and bar.get("kind"):
+        details["scale_kind"] = bar["kind"]
 
     def _cal(um, source, **extra):
         cal = Calibration(um_per_px=um, source=source, details={**details, **extra})
@@ -303,8 +485,6 @@ def calibrate(image, path=None, data=None, manual_um_per_px=None, manual_bar_um=
         return _cal(float(manual_bar_um) / bar["length_px"], "scale_bar (user-entered label)",
                     bar_um=float(manual_bar_um))
 
-    meta = calibration_from_metadata(path, data) if (path is not None or data is not None) else None
-
     bar_um, label = None, None
     can_ocr = use_ocr and ocr_available()
     if bar and can_ocr:
@@ -315,6 +495,8 @@ def calibrate(image, path=None, data=None, manual_um_per_px=None, manual_bar_um=
         elif bar_um and not _is_round_value(_parse_number(_LABEL_RE.search(label).group(1))):
             details["warning"] = (f"The scale bar label was read as '{label}', which is not a usual "
                                   "scale-bar value. Please check it in the Scale calibration tab.")
+    if bar and not bar_um and meta and meta[2].get("marker_um"):
+        bar_um, label = meta[2]["marker_um"], f"{meta[2]['marker_um']:g} um (from metadata)"
 
     if meta:
         cal = _cal(meta[0], meta[1], **meta[2])
@@ -330,7 +512,7 @@ def calibrate(image, path=None, data=None, manual_um_per_px=None, manual_bar_um=
         return cal
 
     if bar_um:
-        cal = _cal(bar_um / bar["length_px"], "scale_bar", bar_um=bar_um)
+        cal = _cal(bar_um / bar["length_px"], "scale_bar" if not bar.get("kind") else bar["kind"], bar_um=bar_um)
         cal.label_text = label
         return cal
 

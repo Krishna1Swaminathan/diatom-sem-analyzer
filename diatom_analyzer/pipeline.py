@@ -49,7 +49,7 @@ def identify_and_grade(fr, library, config):
 
 
 def analyze_image(source, name=None, config=None, manual_um_per_px=None, manual_bar_um=None,
-                  library=None, databar_top=None, use_ocr=True):
+                  library=None, databar_top=None, use_ocr=True, sidecar_text=None):
     """Run the full pipeline on one image (a path, or raw bytes plus ``name``)."""
     config = config or AnalysisConfig()
     is_path = isinstance(source, (str, Path))
@@ -57,7 +57,8 @@ def analyze_image(source, name=None, config=None, manual_um_per_px=None, manual_
     image = load_image(source, name=name)
 
     cal = calibrate(image, path=source if is_path else None, data=None if is_path else bytes(source),
-                    manual_um_per_px=manual_um_per_px, manual_bar_um=manual_bar_um, use_ocr=use_ocr)
+                    manual_um_per_px=manual_um_per_px, manual_bar_um=manual_bar_um, use_ocr=use_ocr,
+                    sidecar_text=sidecar_text)
     top = int(databar_top) if databar_top else int(cal.details.get("databar_top", image.shape[0]))
     region = image[:top]
     um = cal.um_per_px if cal.ok else None
