@@ -7,6 +7,7 @@ import numpy as np
 from scipy import ndimage as ndi
 from skimage import filters, measure, morphology, segmentation
 
+from . import morphology as fast_morph
 from .config import SegmentationConfig
 
 
@@ -41,11 +42,26 @@ def _watershed_pieces(mask, dist, h):
     h-maxima are taken as regional maxima of the reconstruction, so a flat ridge (a linear
     pennate) stays one plateau; skimage's h_maxima marks each one-pixel bump on it separately.
     """
-    rec = morphology.reconstruction(dist - h, dist, method="dilation")
-    peaks = morphology.local_maxima(rec, connectivity=2) & mask
-    markers, n = ndi.label(peaks, structure=np.ones((3, 3)))
-    if n < 2:
-        return None
+    # Peaks don't need full resolution: find them on a copy at most ~400 px across (much faster on
+    # big frustules), then split at full resolution.
+    f = min(1.0, 400.0 / max(mask.shape))
+    if f < 1.0:
+        small = cv2.resize(mask.astype(np.uint8), (max(1, round(mask.shape[1] * f)), max(1, round(mask.shape[0] * f))),
+                           interpolation=cv2.INTER_NEAREST).astype(bool)
+        small_dist = ndi.distance_transform_edt(np.pad(small, 1))[1:-1, 1:-1]
+        rec = morphology.reconstruction(small_dist - h * f, small_dist, method="dilation")
+        small_peaks = morphology.local_maxima(rec, connectivity=2) & small
+        small_markers, n = ndi.label(small_peaks, structure=np.ones((3, 3)))
+        if n < 2:
+            return None
+        markers = cv2.resize(small_markers.astype(np.int32).astype(np.float32), (mask.shape[1], mask.shape[0]),
+                             interpolation=cv2.INTER_NEAREST).astype(np.int32) * mask
+    else:
+        rec = morphology.reconstruction(dist - h, dist, method="dilation")
+        peaks = morphology.local_maxima(rec, connectivity=2) & mask
+        markers, n = ndi.label(peaks, structure=np.ones((3, 3)))
+        if n < 2:
+            return None
     return segmentation.watershed(-dist, markers, mask=mask)
 
 
@@ -102,18 +118,14 @@ def _tidy_outlines(labels):
         if r_close < 2:
             out[region.slice][mask] = region.label
             continue
-        pad = r_close + 2
-        work = np.pad(mask, pad)
-        work = ndi.binary_closing(work, structure=morphology.disk(r_close))
-        work = ndi.binary_fill_holes(work)
+        work = ndi.binary_fill_holes(fast_morph.closing(mask, r_close))
         if r_open >= 1:
-            work = ndi.binary_opening(work, structure=morphology.disk(r_open))
+            work = fast_morph.opening(np.pad(work, 1), r_open)[1:-1, 1:-1]
         comp, n = ndi.label(work)
         if n:
             sizes = np.bincount(comp.ravel())
             sizes[0] = 0
             work = comp == int(np.argmax(sizes))
-        work = work[pad:-pad, pad:-pad]
         if abs(int(work.sum()) - int(mask.sum())) > 0.25 * mask.sum():
             work = mask
         view = out[region.slice]

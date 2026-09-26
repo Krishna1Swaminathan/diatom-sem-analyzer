@@ -7,8 +7,8 @@ import numpy as np
 from scipy import ndimage as ndi
 from scipy.ndimage import gaussian_filter1d
 from skimage import measure
-from skimage.morphology import disk
 
+from . import morphology as fast_morph
 from .config import ViewConfig
 from .models import Frustule
 
@@ -104,8 +104,7 @@ def _damage_view(mask, width):
     r = int(round(0.15 * width))
     if r < 2:
         return mask
-    pad = r + 1
-    opened = ndi.binary_opening(np.pad(mask, pad), structure=disk(r))[pad:-pad, pad:-pad]
+    opened = fast_morph.opening(np.pad(mask, 1), r)[1:-1, 1:-1]
     comp, n = ndi.label(opened)
     if not n:
         return mask
