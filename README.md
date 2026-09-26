@@ -52,6 +52,15 @@ Everything runs locally: no cloud, no GPU, no training step, no programming.
    species name and click *Add to library*. From then on, every image is compared with those examples.
    Two or three good examples per species is enough to start; add more when it gets one wrong.
 
+6. *(When detection misses or invents frustules)* **Correct it by hand.** Above the annotated image, choose
+   *Add a missed frustule* and **drag along the frustule from tip to tip** (or click the centre of a round
+   one); its outline is traced automatically along its edges. Choose *Remove a detection* and click a
+   wrong one. *Undo last* and *Clear all* are next to the image. Every measurement updates, and manual
+   frustules are marked `manual` in the spreadsheet. For images the automatic modes cannot handle at all
+   (e.g. dense *Didymosphenia* on precipitate), pick *Detection mode → Manual only* and outline each one.
+7. *(Optional)* **Save the corrected outlines as training data** (*Training labels* tab) to train a
+   detection model for your own images; see *Training a detection model* below.
+
 Thresholds (minimum object size, pore size range, damage sensitivity) are under *Advanced settings*.
 Every value used is recorded in the spreadsheet's *Settings* sheet, so results are reproducible.
 
@@ -191,6 +200,33 @@ python -m diatom_analyzer.evaluate build-library path/to/species_folders --forma
 
 In the app, *Species library → Import labelled examples* does the same from a .zip of species folders.
 
+## Training a detection model
+
+The classical detectors cannot separate every kind of scene. For those, the app's corrected outlines
+become training data for [Cellpose](https://github.com/MouseLand/cellpose), an open-source
+segmentation network:
+
+1. In the app, outline frustules on a handful of representative images (fix automatic detections or use
+   *Manual only*) and press *Save outlines as a training example* on each. Ten to twenty images with every
+   frustule outlined is a good start.
+2. Install Cellpose (the compact version 3 network trains on a laptop CPU):
+   ```
+   pip install "cellpose>=3.1,<4"
+   ```
+3. Train, starting from Cellpose's pretrained general-purpose model:
+   ```
+   python -m diatom_analyzer.train training_data
+   ```
+   A quarter of the examples are held back, and the report gives precision and recall on them.
+   Add `--from-scratch` to train without downloading the pretrained model.
+4. In the app, choose *Detection mode → Cellpose* and pick your model (saved in `models/`).
+
+Checked end to end on synthetic crowded scenes (the case where the classical detector struggles):
+a model trained from scratch on 12 frames (39 min on a laptop-class CPU, no GPU) found 96 % of the
+frustules in 8 unseen frames with no false detections, against 65 % recall and 91 % precision for
+the classical detector. Real accuracy on the lab's images depends on the outlines you train it with;
+the held-out report tells you where you stand.
+
 ## Limitations and next steps
 
 - **Validate on the lab's own images.** Synthetic images prove the maths, not the realism. The first
@@ -224,6 +260,8 @@ diatom_analyzer/
   synthetic.py               synthetic SEM images with ground truth
   datasets.py                readers for labelled datasets (Pascal VOC, species folders)
   evaluate.py                benchmarks, dataset evaluation and library building
+  editing.py                 click/drag corrections and training-label export
+  train.py                   train a Cellpose model on corrected outlines
   __main__.py                batch command line
 sample_data/                 demo images and their ground truth
 reports/                     benchmark reports

@@ -1,5 +1,7 @@
 """Find every frustule in the frame and return an instance label image."""
 
+from pathlib import Path
+
 import cv2
 import numpy as np
 from scipy import ndimage as ndi
@@ -110,22 +112,33 @@ def _segment_classical(image, min_area_px, cfg, close_px):
     return labels
 
 
+_CELLPOSE_CACHE = {}
+
+
 def _segment_cellpose(image, cfg):
+    """Cellpose instance segmentation: a model trained on the lab's outlines, or a built-in one."""
     try:
         from cellpose import models
     except ImportError as exc:
-        raise RuntimeError("Cellpose is not installed. Run `pip install cellpose` or use the classical "
-                           "segmentation method.") from exc
+        raise RuntimeError('Cellpose is not installed. Run `pip install "cellpose>=3.1,<4"` or use another '
+                           "detection mode.") from exc
+    name = cfg.cellpose_model or "cyto3"
+    if name not in _CELLPOSE_CACHE:
+        if Path(name).exists():
+            _CELLPOSE_CACHE[name] = models.CellposeModel(gpu=False, pretrained_model=str(name))
+        else:
+            try:
+                _CELLPOSE_CACHE[name] = models.CellposeModel(gpu=False, model_type=name)
+            except TypeError:  # Cellpose >= 4 has a single built-in model
+                _CELLPOSE_CACHE[name] = models.CellposeModel(gpu=False)
+    model = _CELLPOSE_CACHE[name]
+    diameter = float(getattr(model, "diam_labels", 0) or 0) or None  # trained models know their object size
+    u8 = np.clip(image * 255, 0, 255).astype(np.uint8)
     try:
-        model = models.CellposeModel(gpu=False, model_type="cyto3")
-    except TypeError:  # Cellpose >= 4 removed model_type
-        model = models.CellposeModel(gpu=False)
-    try:
-        result = model.eval(image, diameter=None, channels=[0, 0])
+        result = model.eval(u8, diameter=diameter, channels=[0, 0])
     except TypeError:
-        result = model.eval(image, diameter=None)
-    masks = result[0]
-    return np.asarray(masks, dtype=np.int32)
+        result = model.eval(u8, diameter=diameter)
+    return np.asarray(result[0], dtype=np.int32)
 
 
 def detect_round_cells(image, um_per_px, cfg):

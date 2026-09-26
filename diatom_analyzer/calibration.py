@@ -370,7 +370,6 @@ def _ocr_tokens(region, scale, psm):
     import os
 
     import pytesseract
-    os.environ.setdefault("OMP_THREAD_LIMIT", "1")  # tesseract's own threading is slower for small crops
     u8 = (region * 255).astype(np.uint8)
     up = u8 if scale == 1 else cv2.resize(u8, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
     _, bw = cv2.threshold(up, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -378,10 +377,19 @@ def _ocr_tokens(region, scale, psm):
         bw = 255 - bw  # tesseract wants dark text on a light page
     pad = 20
     bw = cv2.copyMakeBorder(bw, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=255)
+    # Tesseract's own threading is slower on small crops. Limit it only while it runs: left set, the
+    # variable also reaches PyTorch's OpenMP runtime and breaks Cellpose (NaN outputs).
+    previous = os.environ.get("OMP_THREAD_LIMIT")
+    os.environ["OMP_THREAD_LIMIT"] = "1"
     try:
         d = pytesseract.image_to_data(bw, config=f"--psm {psm}", output_type=pytesseract.Output.DICT)
     except Exception:
         return []
+    finally:
+        if previous is None:
+            os.environ.pop("OMP_THREAD_LIMIT", None)
+        else:
+            os.environ["OMP_THREAD_LIMIT"] = previous
     words = []
     for i, text in enumerate(d["text"]):
         text = text.strip()
