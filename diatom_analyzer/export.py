@@ -15,7 +15,8 @@ COLUMN_GUIDE = [
     ("Frustules", "species_confidence", "0-1; how clearly the best species beats the others and how close it is"),
     ("Frustules", "morphotype", "centric / pennate (elliptic) / pennate (linear) / girdle view / fragment"),
     ("Frustules", "view", "valve = seen face-on, girdle = seen from the side (rectangular outline)"),
-    ("Frustules", "damage", "intact / cracked / fragmented; 'uncertain' when the frustule is cut by the image edge"),
+    ("Frustules", "damage", "intact / cracked / fragmented; 'uncertain' when cut by the image edge; "
+                            "'not graded' in round-cell mode"),
     ("Frustules", "length_um, width_um", "Long and short side of the tightest rotated bounding box"),
     ("Frustules", "equiv_diameter_um", "Diameter of a circle with the same area (the usual size for centrics)"),
     ("Frustules", "orientation_deg", "Long-axis angle, counter-clockwise from horizontal (0-180); blank for round outlines"),

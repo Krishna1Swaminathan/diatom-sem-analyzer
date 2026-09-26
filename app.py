@@ -41,6 +41,8 @@ state.setdefault("use_demo", False)
 def build_config(s):
     cfg = AnalysisConfig()
     cfg.segmentation.method = s["method"]
+    cfg.segmentation.cell_diameter_um = tuple(s["cell_diameter"])
+    cfg.segmentation.cell_roundness = s["cell_roundness"]
     cfg.segmentation.min_frustule_um = s["min_size_um"]
     cfg.segmentation.split_touching = s["split"]
     cfg.pores.min_diameter_um, cfg.pores.max_diameter_um = s["pore_range"]
@@ -172,16 +174,27 @@ with st.sidebar:
                 st.error("No species folders with detectable diatoms were found in that zip.")
 
     with st.expander("Advanced settings"):
-        methods = ["classical"]
+        methods = {"Separate frustules (general)": "classical",
+                   "Round centric cells, crowded (e.g. Thalassiosira)": "round_cells"}
         try:
             import cellpose  # noqa: F401
-            methods.append("cellpose")
+            methods["Cellpose (deep learning)"] = "cellpose"
         except ImportError:
             pass
+        method_label = st.selectbox(
+            "Detection mode", list(methods),
+            help="General: frustules standing apart on a smoother background. Round centric cells: finds "
+                 "the bright rims of round valves in crowded cultures or on textured substrates; damage "
+                 "is not graded in this mode.")
+        round_mode = methods[method_label] == "round_cells"
         settings = {
-            "method": st.selectbox("Segmentation", methods,
-                                   help="Classical needs nothing extra. Cellpose (deep learning) appears here "
-                                        "once installed."),
+            "method": methods[method_label],
+            "cell_diameter": st.slider("Cell diameter range (µm)", 0.5, 60.0, (2.0, 8.0), 0.5,
+                                       disabled=not round_mode),
+            "cell_roundness": st.slider("Rim completeness required", 0.3, 0.95, 0.5, 0.05,
+                                        disabled=not round_mode,
+                                        help="Lower finds partly hidden or tilted cells, but may add false "
+                                             "circles; higher keeps only clear, round rims."),
             "min_size_um": st.number_input("Ignore objects smaller than (µm)", 0.1, 500.0, 3.0, 0.5),
             "split": st.checkbox("Separate touching frustules", value=True),
             "pore_range": st.slider("Pore diameter range (µm)", 0.01, 10.0, (0.03, 4.0), 0.01),

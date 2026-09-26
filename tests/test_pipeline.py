@@ -127,3 +127,19 @@ def test_rgb_jpeg():
     Image.fromarray(img).convert("RGB").save(buf, format="JPEG", quality=90)
     res = analyze_image(buf.getvalue(), name="c.jpg", manual_um_per_px=0.05)
     assert len(res.frustules) == 2
+
+
+def test_round_cell_mode_finds_crowded_centrics():
+    from diatom_analyzer.config import AnalysisConfig
+    from diatom_analyzer.synthetic import FrustuleSpec
+    specs = [FrustuleSpec("centric", 6 + 4.2 * i, 6 + 4.2 * j, 4.0, 4.0, pore_diameter_um=0.3, pore_spacing_um=0.7)
+             for i in range(10) for j in range(7)]  # a touching 10 x 7 grid of 4 µm cells
+    img, _ = render_scene(specs, bar_style="none", seed=31)
+    cfg = AnalysisConfig()
+    cfg.segmentation.method = "round_cells"
+    cfg.segmentation.cell_diameter_um = (3.0, 5.0)
+    res = analyze_image(png_bytes(img), name="grid.png", manual_um_per_px=0.05, config=cfg)
+    assert len(res.frustules) >= 0.8 * len(specs)
+    diam = np.median([f.equiv_diameter_px * 0.05 for f in res.frustules])
+    assert diam == pytest.approx(4.0, rel=0.1)
+    assert all(f.damage == "not graded" for f in res.frustules)

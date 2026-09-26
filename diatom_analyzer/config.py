@@ -3,11 +3,14 @@ from dataclasses import asdict, dataclass, field
 
 @dataclass
 class SegmentationConfig:
-    method: str = "classical"  # "classical" or "cellpose"
+    method: str = "classical"  # "classical", "round_cells" or "cellpose"
     min_frustule_um: float = 3.0  # objects with equivalent diameter below this are ignored
     split_touching: bool = True
     split_prominence: float = 0.35  # h-maxima height as a fraction of the component's max distance
     edge_pore_close_um: float = 0.4  # gaps up to about this size in the outline are closed
+    cell_diameter_um: tuple = (2.0, 8.0)  # round_cells: expected valve diameter range
+    cell_edge_strength: int = 40  # round_cells: Canny threshold for rim edges (lower finds fainter rims)
+    cell_roundness: float = 0.5  # round_cells: 0-1, how complete and circular a rim must be
 
 
 @dataclass

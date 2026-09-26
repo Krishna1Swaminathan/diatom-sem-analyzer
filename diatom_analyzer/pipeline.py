@@ -78,6 +78,8 @@ def analyze_image(source, name=None, config=None, manual_um_per_px=None, manual_
         fr.pores, fr.crack_candidates = detect_pores(region, labels, fr, um, config.pores)
         fr.features = extract_features(fr, region, labels, um)
         identify_and_grade(fr, library, config)
+        if config.segmentation.method == "round_cells":
+            fr.damage = "not graded"  # outlines are fitted circles, so outline-based grading is meaningless
 
     if not frustules:
         warnings.append("No frustules were detected. Try lowering the minimum frustule size.")
