@@ -1,17 +1,20 @@
 """Grade each frustule as intact, cracked or fragmented.
 
 Rules, in order (all thresholds live in DamageConfig and are exported with the results):
-  * touching the frame edge                       -> "uncertain" (outline is cut by the frame)
-  * outline far from a regular shape               -> "fragmented"
-    (solidity below fragmented_solidity, neither ellipse- nor rectangle-like, or a bite out
-    of the outline deeper than fragmented_notch_ratio of the width)
-  * long thin dark line across the shell, a notch
-    in the outline, or mildly concave outline      -> "cracked"
-  * otherwise                                     -> "intact"
+  * touching the frame edge                          -> "uncertain" (outline is cut by the frame)
+  * a sharp inward corner in the outline, very low
+    solidity, or a deep bite out of the margin         -> "fragmented"
+  * a long thin dark line across the shell, or a
+    smaller sharp corner (a chip)                      -> "cracked"
+  * otherwise                                        -> "intact"
 
-When the frustule confidently matches a species in the reference library, the outline tests
-are made relative to that species' own typical outline, so naturally irregular species
-(crescent-shaped, triangular...) are not mistaken for fragments.
+Intact valves have smooth outlines, even when concave (crescent-shaped species) or angular
+(triangular centrics, whose corners are rounded and point outwards). Fractures meet the natural
+margin at sharp re-entrant corners, which is what the corner test measures.
+
+When the frustule confidently matches a species in the reference library whose outline is
+naturally concave, the solidity threshold is relaxed to that species' own typical value. The
+library only ever relaxes the rules, so a wrong species guess cannot make a frustule "broken".
 """
 
 from .config import DamageConfig
@@ -30,22 +33,13 @@ def grade_damage(fr, crack_candidates, cfg=None, reference=None):
     if fr.touches_border:
         return "uncertain"
 
-    frag_regularity = cfg.fragmented_regularity
     frag_solidity = cfg.fragmented_solidity
-    crack_solidity = cfg.cracked_solidity
-    if reference:
-        ref_regularity = max(reference.get("ellipse_iou", 1.0), reference.get("rect_fill", 1.0))
-        ref_solidity = reference.get("solidity", 1.0)
-        frag_regularity = min(frag_regularity, ref_regularity - 0.08)
-        frag_solidity = min(frag_solidity, ref_solidity - 0.08)
-        crack_solidity = min(crack_solidity, ref_solidity - 0.03)
+    if reference and "solidity" in reference:
+        frag_solidity = min(frag_solidity, reference["solidity"] - 0.08)
 
-    regularity = max(fr.ellipse_iou, fr.rect_fill)
-    if (fr.solidity < frag_solidity or regularity < frag_regularity
+    if (fr.inward_corner_deg >= cfg.fragment_corner_deg or fr.solidity < frag_solidity
             or fr.notch_depth_ratio > cfg.fragmented_notch_ratio):
         return "fragmented"
-    if (fr.crack_length_px >= cfg.crack_length_ratio * fr.length_px
-            or fr.notch_depth_ratio > cfg.notch_depth_ratio
-            or fr.solidity < crack_solidity):
+    if fr.crack_length_px >= cfg.crack_length_ratio * fr.length_px or fr.inward_corner_deg >= cfg.chip_corner_deg:
         return "cracked"
     return "intact"

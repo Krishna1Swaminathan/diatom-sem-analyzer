@@ -4,6 +4,7 @@ Run with:  streamlit run app.py
 """
 
 import io
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from diatom_analyzer import __version__
 from diatom_analyzer.calibration import ocr_available
 from diatom_analyzer.classification import IMAGE_SUFFIXES, SpeciesLibrary
 from diatom_analyzer.config import AnalysisConfig
+from diatom_analyzer.evaluate import build_library
 from diatom_analyzer.export import frustule_rows, pore_rows, write_excel
 from diatom_analyzer.pipeline import analyze_image
 from diatom_analyzer.visualize import DAMAGE_COLORS, render_overlay
@@ -43,8 +45,8 @@ def build_config(s):
     cfg.segmentation.split_touching = s["split"]
     cfg.pores.min_diameter_um, cfg.pores.max_diameter_um = s["pore_range"]
     cfg.pores.contrast_k = s["pore_sensitivity"]
-    cfg.damage.fragmented_regularity = s["frag_regularity"]
-    cfg.damage.cracked_solidity = s["crack_solidity"]
+    cfg.damage.fragment_corner_deg = s["frag_corner"]
+    cfg.damage.fragmented_solidity = s["frag_solidity"]
     return cfg
 
 
@@ -144,6 +146,27 @@ with st.sidebar:
         st.caption(f"{len(library.species)} species, {len(library)} exemplars")
     else:
         st.caption("Empty: frustules get a morphotype only. Teach species from any result.")
+    with st.expander("Import labelled examples"):
+        st.caption("A .zip with one folder per species, each image showing one diatom (for example a "
+                   "downloaded reference collection, or your own sorted images).")
+        zip_up = st.file_uploader("Zip of species folders", type=["zip"], key="library_zip")
+        per_species = st.number_input("Examples per species", 1, 100, 10)
+        if zip_up is not None and st.button("Import into library"):
+            with tempfile.TemporaryDirectory() as tmp:
+                with zipfile.ZipFile(io.BytesIO(zip_up.getvalue())) as zf:
+                    zf.extractall(tmp)  # zipfile strips absolute paths and ".." components
+                root = Path(tmp)
+                dirs = [d for d in root.iterdir() if d.is_dir() and not d.name.startswith(("__", "."))]
+                if len(dirs) == 1 and not any(f.is_file() for f in root.iterdir()):
+                    root = dirs[0]  # the zip holds a single parent folder
+                with st.spinner("Analysing examples…"):
+                    added = build_library(root, "folders", library_dir, shots=int(per_species))
+            if added:
+                st.success("Imported " + ", ".join(f"{s} ({n})" for s, n in sorted(added.items())))
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error("No species folders with detectable diatoms were found in that zip.")
 
     with st.expander("Advanced settings"):
         methods = ["classical"]
@@ -161,8 +184,11 @@ with st.sidebar:
             "pore_range": st.slider("Pore diameter range (µm)", 0.01, 10.0, (0.03, 4.0), 0.01),
             "pore_sensitivity": st.slider("Pore detection strictness", 0.2, 1.5, 0.5, 0.05,
                                           help="Lower finds fainter pores; higher only keeps high-contrast ones."),
-            "frag_regularity": st.slider("Fragment if outline regularity below", 0.6, 0.98, 0.88, 0.01),
-            "crack_solidity": st.slider("Cracked if solidity below", 0.8, 1.0, 0.93, 0.01),
+            "frag_corner": st.slider("Fragment if the outline has an inward corner sharper than (°)", 20, 90, 40, 1,
+                                     help="Broken edges meet the natural margin at sharp inward corners; "
+                                          "intact outlines, even crescent-shaped ones, curve smoothly."),
+            "frag_solidity": st.slider("Fragment if solidity below", 0.5, 0.95, 0.85, 0.01,
+                                       help="Solidity = area / convex-hull area."),
         }
     st.caption(f"v{__version__} · open source")
 
