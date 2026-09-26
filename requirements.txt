@@ -12,6 +12,7 @@ openpyxl>=3.1
 
 # UI
 streamlit>=1.32
+streamlit-image-coordinates>=0.4
 
 # Testing
 pytest>=8.0

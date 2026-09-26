@@ -10,13 +10,17 @@ from pathlib import Path
 
 import altair as alt
 import cv2
+import numpy as np
 import pandas as pd
 import streamlit as st
+from PIL import Image
+from streamlit_image_coordinates import streamlit_image_coordinates
 
 from diatom_analyzer import __version__
 from diatom_analyzer.calibration import ocr_available
 from diatom_analyzer.classification import IMAGE_SUFFIXES, SpeciesLibrary
 from diatom_analyzer.config import AnalysisConfig
+from diatom_analyzer.editing import save_training_example
 from diatom_analyzer.evaluate import build_library
 from diatom_analyzer.export import frustule_rows, pore_rows, write_excel
 from diatom_analyzer.pipeline import analyze_image
@@ -33,6 +37,8 @@ st.set_page_config(page_title="Diatom SEM Analyzer", page_icon="🔬", layout="w
 state = st.session_state
 state.setdefault("overrides", {})
 state.setdefault("use_demo", False)
+state.setdefault("edits", {})  # image name -> list of manual corrections
+state.setdefault("last_click", {})  # image name -> timestamp of the last click already applied
 
 
 # --------------------------------------------------------------------------- helpers
@@ -61,11 +67,11 @@ def library_signature(folder):
 
 @st.cache_data(show_spinner=False, max_entries=64)
 def run_analysis(data, name, settings, manual_um, manual_bar_um, databar_top, library_dir, _lib_sig,
-                 sidecar_text=None):
+                 sidecar_text=None, edits=()):
     library = SpeciesLibrary(library_dir) if _lib_sig else None
     return analyze_image(data, name=name, config=build_config(dict(settings)), manual_um_per_px=manual_um,
                          manual_bar_um=manual_bar_um, library=library, databar_top=databar_top,
-                         sidecar_text=sidecar_text)
+                         sidecar_text=sidecar_text, edits=edits)
 
 
 def histogram(values, label):
@@ -175,7 +181,8 @@ with st.sidebar:
 
     with st.expander("Advanced settings"):
         methods = {"Separate frustules (general)": "classical",
-                   "Round centric cells, crowded (e.g. Thalassiosira)": "round_cells"}
+                   "Round centric cells, crowded (e.g. Thalassiosira)": "round_cells",
+                   "Manual only (outline frustules by hand)": "manual"}
         try:
             import cellpose  # noqa: F401
             methods["Cellpose (deep learning)"] = "cellpose"
@@ -185,7 +192,8 @@ with st.sidebar:
             "Detection mode", list(methods),
             help="General: frustules standing apart on a smoother background. Round centric cells: finds "
                  "the bright rims of round valves in crowded cultures or on textured substrates; damage "
-                 "is not graded in this mode.")
+                 "is not graded in this mode. Manual only: start with nothing detected and outline each "
+                 "frustule by dragging along it (for images the automatic modes cannot handle).")
         round_mode = methods[method_label] == "round_cells"
         settings = {
             "method": methods[method_label],
@@ -236,7 +244,7 @@ for i, (name, data) in enumerate(sources):
     try:
         res = run_analysis(data, name, settings_key, ov.get("um_per_px", global_um), ov.get("bar_um", global_bar),
                            ov.get("databar_top"), library_dir, lib_sig,
-                           sidecars.get(Path(name).stem))
+                           sidecars.get(Path(name).stem), tuple(state.edits.get(name, [])))
         results.append(res)
     except Exception as exc:
         st.error(f"Could not analyse {name}: {exc}")
@@ -318,8 +326,54 @@ with left:
     t1, t2 = st.columns(2)
     show_pores = t1.checkbox("Show pores", value=True)
     show_axes = t2.checkbox("Show long axes", value=True)
+    edit_mode = st.radio("Using the mouse on the image", ["Just look", "Add a missed frustule", "Remove a detection"],
+                         horizontal=True, key=f"edit_mode_{chosen}")
+    size_hint_um = 10.0
+    if edit_mode == "Add a missed frustule":
+        e1, e2 = st.columns([3, 2])
+        e1.caption("**Drag along the frustule from tip to tip.** For a round one you can also just click its "
+                   "centre; the size on the right is then used as a guide.")
+        default_size = float(np.median([f.equiv_diameter_px for f in res.frustules]) * um) \
+            if (res.frustules and um) else 10.0
+        size_hint_um = e2.number_input("Round object size (µm)", 0.1, 5000.0, round(default_size, 1), 0.5,
+                                       key=f"size_hint_{chosen}")
+    elif edit_mode == "Remove a detection":
+        st.caption("**Click a detected frustule** to remove it.")
+
     overlay = render_overlay(res, show_pores=show_pores, show_axes=show_axes)
-    st.image(overlay, width="stretch")
+    display = Image.fromarray(overlay)
+    display.thumbnail((1400, 1400))
+    if edit_mode == "Just look":
+        st.image(display, width="stretch")
+    else:
+        click = streamlit_image_coordinates(display, key=f"clicks_{chosen}", width="stretch", click_and_drag=True,
+                                            image_format="JPEG", jpeg_quality=85, cursor="crosshair")
+        if click and click.get("unix_time") != state.last_click.get(chosen):
+            state.last_click[chosen] = click["unix_time"]
+            fx = overlay.shape[1] / click["width"]
+            fy = overlay.shape[0] / click["height"]
+            x1, y1 = click["x1"] * fx, click["y1"] * fy
+            x2, y2 = click["x2"] * fx, click["y2"] * fy
+            if y1 < res.analysis_height:
+                if edit_mode == "Add a missed frustule":
+                    size_px = size_hint_um / um if um else size_hint_um
+                    edit = ("add", x1, y1, min(max(x2, 0), overlay.shape[1] - 1),
+                            min(max(y2, 0), res.analysis_height - 1), size_px)
+                else:
+                    edit = ("remove", x1, y1, x1, y1, 0)
+                state.edits.setdefault(chosen, []).append(edit)
+                st.rerun()
+    edits_here = state.edits.get(chosen, [])
+    if edits_here:
+        c1, c2, c3 = st.columns([2, 1, 1])
+        added = sum(e[0] == "add" for e in edits_here)
+        c1.caption(f"Manual corrections: {added} added, {len(edits_here) - added} removed")
+        if c2.button("Undo last", key=f"undo_{chosen}"):
+            edits_here.pop()
+            st.rerun()
+        if c3.button("Clear all", key=f"clear_{chosen}"):
+            state.edits[chosen] = []
+            st.rerun()
     st.markdown(legend_html(), unsafe_allow_html=True)
     st.download_button("⬇️ This annotated image", png_bytes(overlay), f"{Path(chosen).stem}_annotated.png",
                        mime="image/png")
@@ -334,8 +388,8 @@ with right:
     else:
         st.info("No frustules detected. Try lowering 'Ignore objects smaller than' in Advanced settings.")
 
-tab_f, tab_p, tab_d, tab_c, tab_t = st.tabs(["All frustule data", "Pores", "Distributions", "Scale calibration",
-                                             "Teach species"])
+tab_f, tab_p, tab_d, tab_c, tab_t, tab_l = st.tabs(["All frustule data", "Pores", "Distributions",
+                                                    "Scale calibration", "Teach species", "Training labels"])
 
 with tab_f:
     st.dataframe(pd.DataFrame(frustule_rows(res)), hide_index=True, width="stretch")
@@ -427,3 +481,27 @@ with tab_t:
             st.markdown(f"*{sp}* · {len(previews)} example(s)")
             if thumbs:
                 st.image([str(t) for t in thumbs[:8]], width=90)
+
+with tab_l:
+    st.markdown("Once the outlines on this image are right (after any corrections), save them as a training "
+                "example. A folder of these is what a segmentation model such as Cellpose learns from; see "
+                "the README section *Training a detection model*.")
+    t1, t2 = st.columns([3, 2])
+    train_dir = t1.text_input("Training folder", value=str(HERE / "training_data"), key="train_dir")
+    if t2.button("Save outlines as a training example", key=f"save_train_{chosen}", type="primary"):
+        stem = Path(chosen).stem.replace(" ", "_")
+        img_path, mask_path = save_training_example(res.image[: res.analysis_height], res.labels, train_dir, stem)
+        st.success(f"Saved {img_path.name} and {mask_path.name} ({len(res.frustules)} outlines) to {train_dir}")
+    folder = Path(train_dir)
+    saved = sorted(folder.glob("*_masks.png")) if folder.exists() else []
+    if saved:
+        st.caption(f"{len(saved)} training example(s) in this folder.")
+        zbuf2 = io.BytesIO()
+        with zipfile.ZipFile(zbuf2, "w", zipfile.ZIP_DEFLATED) as zf:
+            for mask in saved:
+                zf.write(mask, mask.name)
+                image_file = mask.with_name(mask.name.replace("_masks.png", ".png"))
+                if image_file.exists():
+                    zf.write(image_file, image_file.name)
+        st.download_button("⬇️ All training examples (.zip)", zbuf2.getvalue(), "diatom_training_data.zip",
+                           mime="application/zip")

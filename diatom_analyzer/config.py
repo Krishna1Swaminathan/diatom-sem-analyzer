@@ -3,7 +3,7 @@ from dataclasses import asdict, dataclass, field
 
 @dataclass
 class SegmentationConfig:
-    method: str = "classical"  # "classical", "round_cells" or "cellpose"
+    method: str = "classical"  # "classical", "round_cells", "cellpose" or "manual"
     min_frustule_um: float = 3.0  # objects with equivalent diameter below this are ignored
     split_touching: bool = True
     split_prominence: float = 0.35  # h-maxima height as a fraction of the component's max distance

@@ -180,6 +180,8 @@ def segment_frustules(image, um_per_px=None, cfg=None, exclude_boxes=()):
         min_area_px = 5e-4 * img.size
         close_px = 3
 
+    if cfg.method == "manual":
+        return np.zeros(img.shape, np.int32)  # outlines come only from the user's corrections
     if cfg.method == "cellpose":
         labels = _segment_cellpose(img, cfg)
     elif cfg.method == "round_cells":

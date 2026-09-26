@@ -143,3 +143,52 @@ def test_round_cell_mode_finds_crowded_centrics():
     diam = np.median([f.equiv_diameter_px * 0.05 for f in res.frustules])
     assert diam == pytest.approx(4.0, rel=0.1)
     assert all(f.damage == "not graded" for f in res.frustules)
+
+
+def test_click_to_add_and_remove():
+    from diatom_analyzer.synthetic import FrustuleSpec
+    specs = [FrustuleSpec("centric", 12, 12, 8, 8), FrustuleSpec("pennate", 32, 20, 16, 5, angle_deg=20)]
+    img, truth = render_scene(specs, bar_style="none", seed=41)
+    data = png_bytes(img)
+    auto = analyze_image(data, name="e.png", manual_um_per_px=0.05)
+    assert len(auto.frustules) == 2
+    cx, cy = specs[0].cx_um / 0.05, specs[0].cy_um / 0.05
+    # remove the centric, then add it back by clicking near (not exactly on) its centre
+    remove = ("remove", cx, cy, cx, cy, 0)
+    removed = analyze_image(data, name="e.png", manual_um_per_px=0.05, edits=(remove,))
+    assert len(removed.frustules) == 1
+    # click near (not exactly on) the centre, with a size hint 25 % too large
+    readded = analyze_image(data, name="e.png", manual_um_per_px=0.05,
+                            edits=(remove, ("add", cx + 10, cy - 8, cx + 10, cy - 8, 10 / 0.05)))
+    assert len(readded.frustules) == 2
+    manual = [f for f in readded.frustules if f.origin == "manual"]
+    assert len(manual) == 1
+    assert manual[0].equiv_diameter_px * 0.05 == pytest.approx(8.0, rel=0.1)  # traced the real outline
+
+
+def test_drag_along_axis_traces_pennate():
+    from diatom_analyzer.synthetic import FrustuleSpec
+    import math
+    spec = FrustuleSpec("pennate", 25, 19, 20, 5, angle_deg=30, profile="lanceolate")
+    img, truth = render_scene([spec], bar_style="none", seed=43)
+    data = png_bytes(img)
+    cx, cy, half = spec.cx_um / 0.05, spec.cy_um / 0.05, spec.length_um / 0.05 / 2 * 0.95
+    dx, dy = half * math.cos(math.radians(30)), -half * math.sin(math.radians(30))
+    remove = ("remove", cx, cy, cx, cy, 0)
+    res = analyze_image(data, name="d.png", manual_um_per_px=0.05,
+                        edits=(remove, ("add", cx - dx, cy - dy, cx + dx, cy + dy, 0)))
+    assert len(res.frustules) == 1 and res.frustules[0].origin == "manual"
+    fr = res.frustules[0]
+    assert fr.length_px * 0.05 == pytest.approx(truth["frustules"][0]["mask_length_um"], rel=0.05)
+    assert fr.area_px == pytest.approx(truth["frustules"][0]["area_px"], rel=0.1)
+
+
+def test_training_example_export(tmp_path):
+    import cv2
+    from diatom_analyzer.editing import save_training_example
+    img, _ = render_scene(DEMO_SCENE[:2], bar_style="none", seed=42)
+    res = analyze_image(png_bytes(img), name="t.png", manual_um_per_px=0.05)
+    image_path, mask_path = save_training_example(res.image[: res.analysis_height], res.labels, tmp_path, "t")
+    masks = cv2.imread(str(mask_path), cv2.IMREAD_UNCHANGED)
+    assert masks.dtype == np.uint16 and masks.max() == len(res.frustules)
+    assert cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE).shape == masks.shape
