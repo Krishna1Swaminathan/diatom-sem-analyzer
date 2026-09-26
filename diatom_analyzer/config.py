@@ -25,8 +25,8 @@ class PoreConfig:
 
 @dataclass
 class DamageConfig:
-    fragment_corner_deg: float = 40.0  # a sharper inward corner in the outline is a fracture
-    chip_corner_deg: float = 30.0  # a smaller sharp corner is a chip: graded cracked
+    fragment_corner_deg: float = 20.0  # a sharper inward corner in the outline is a fracture
+    chip_corner_deg: float = 15.0  # a smaller sharp corner is a chip: graded cracked
     fragmented_solidity: float = 0.85
     fragmented_notch_ratio: float = 0.25
     crack_length_ratio: float = 0.20
