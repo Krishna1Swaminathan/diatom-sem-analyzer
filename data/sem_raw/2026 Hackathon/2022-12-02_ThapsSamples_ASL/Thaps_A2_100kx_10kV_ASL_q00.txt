@@ -1,0 +1,32 @@
+[SemImageFile]
+InstructName=S-4700
+FileName=Thaps_A2_100kx_10kV_ASL_q00.tif
+SampleName=                                        
+DataNumber=HEA
+Date=12/02/2022
+Time=2:27:20 PM
+Media=HD[D - Images ]
+DataSize=1280x960
+Magnification=100000
+AcceleratingVoltage=10000 Volt
+EmissionCurrent=21000 nA
+WorkingDistance=8100 um
+SignalName=SE(M)
+SubMagnification=0
+SubSignalName=
+PhotoSize=1000
+Vacuum=
+MicronMarker=500
+SpecimenBias=0
+Condencer1=5000
+ScanSpeed=Slow3
+CalibrationScanSpeed=25
+LensMode=Ultra High Resolution
+ColorMode=Grayscale
+ColorPalette=
+ScreenMode=Standard Screen
+Comment=                                                                                
+KeyWord1=                    
+KeyWord2=                    
+Condition=Vacc=10kV   Mag=x100k   WD=8.1mm
+DataDisplayCombine=1
