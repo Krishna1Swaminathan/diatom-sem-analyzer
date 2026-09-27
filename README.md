@@ -1,80 +1,87 @@
-# Diatom SEM Analyzer
+# Diatom Analyzer
 
-**Image in, measurements out.** A laptop-friendly, fully open-source tool that takes scanning
-electron microscope (SEM) images of diatoms and, for every frustule in the frame, reports:
+**Drop in SEM images of diatoms. Get every diatom counted, measured in µm and graded intact, cracked
+or broken, with every pore, in one Excel file.** Open source, runs on a laptop, no programming needed.
 
-| The lab asked for | What you get |
+![The Diatom Analyzer app](docs/app.jpg)
+
+## What it does
+
+| You need | You get |
 |---|---|
-| Detect and count every frustule | Outlined and numbered on an annotated image; touching frustules are separated |
-| Classify species or morphotype | Morphotype out of the box (centric, pennate, girdle view, fragment); species once you teach it a few examples |
-| Size in µm | Length, width, equivalent diameter and area, in µm |
-| Orientation | Long-axis angle (0-180°) **and** view: valve (face-on) or girdle (side-on) |
-| Damage grade | intact / cracked / fragmented (and "uncertain" when cut off by the image edge) |
-| Pore spreadsheet | Every pore's coordinates and diameter in µm, plus porosity, pore density and spacing per frustule |
-| Scale from metadata or the scale bar | Read from microscope metadata, or found and read off the scale bar. **The pixel size is never hard-coded** |
+| Count every diatom | Each one outlined and numbered on the image; touching diatoms are separated |
+| Size in µm | Length, width, diameter and area. The scale comes from the microscope's file or the scale bar on the image, **never a fixed pixel size** |
+| Orientation | The long-axis angle (0-180°), and whether it lies face-on (valve) or on its side (girdle) |
+| Condition | Intact, cracked or broken, colour-coded on the image |
+| Shape or species | Round (centric), elongated (pennate), side view or broken piece; species names once you teach it a few examples |
+| Pores | Every pore's position and diameter in µm, plus pore density, spacing and porosity per diatom |
 
-Everything runs locally on a laptop: no cloud, no GPU, no programming. Start it with a double-click.
+Everything runs on your own computer: no cloud, no GPU, and no images leave the machine.
 
 ---
 
-## Getting started (no programming needed)
+## Getting started
 
 **Once per computer** (about 10 minutes):
 
 1. **Install Python** (version 3.10 or newer) from [python.org/downloads](https://www.python.org/downloads/).
    On Windows, tick **"Add python.exe to PATH"** on the first screen of the installer.
 2. **Get the Diatom Analyzer folder:** on this project's GitHub page click the green **Code** button →
-   **Download ZIP**, and unzip it somewhere easy to find, such as your Desktop. (Or copy the folder
-   from a colleague.)
+   **Download ZIP**, and unzip it somewhere easy to find, such as your Desktop.
 
-**Every time you use it:** open the folder and double-click
+**Every time:** open the folder and double-click
 
-- **Mac:** `Start Diatom Analyzer (Mac).command`. The very first time, macOS may say it can't check the
-  file: **right-click (or Control-click) it → Open → Open**. After that a normal double-click works.
-- **Windows:** `Start Diatom Analyzer (Windows).bat`. If a blue *Windows protected your PC* box appears,
-  click **More info → Run anyway**.
+- **Mac:** `Start Diatom Analyzer (Mac).command`. The first time, macOS may say it can't check the file:
+  **right-click (or Control-click) it → Open → Open**. After that a normal double-click works.
+- **Windows:** `Start Diatom Analyzer (Windows).bat`. If *Windows protected your PC* appears, click
+  **More info → Run anyway**.
 
-The first start sets everything up, which takes a few minutes and needs the internet once. After that
-it opens in about ten seconds. The analyzer opens in your web browser; a black window opens with it and
-must stay open while you work. **To quit,** close the browser tab and then the black window. Nothing is
-uploaded anywhere: the analyzer only answers to your own computer.
+The first start installs what it needs (a few minutes, internet needed once); after that it opens in
+about ten seconds, in your web browser. A black window opens with it and must stay open while you work.
+**To quit,** close the browser tab and then the black window.
 
-*(Optional, for images whose scale is only written on the image and not stored in the file.)* To read
-scale-bar text automatically, install [Tesseract](https://github.com/UB-Mannheim/tesseract/wiki)
-(Windows installer) or run `brew install tesseract` (Mac). Without it, the analyzer asks you what the
-scale bar says. All of the lab's Phenom and Hitachi images carry their scale in the file, so they don't
-need it.
+*(Optional)* To read scale-bar text on images that don't store their scale, install
+[Tesseract](https://github.com/UB-Mannheim/tesseract/wiki) (Windows) or run `brew install tesseract`
+(Mac). Without it, the app asks you what the scale bar says. Phenom and Hitachi images store their
+scale in the file and don't need it.
 
-## Using the app
+## Using the app: four steps
 
-The page walks you through four steps:
+1. **Add your images.** Drag SEM images (TIF, JPG or PNG; a whole batch is fine) into the box. For
+   Hitachi or JEOL images, also add the `.txt` file saved with each image: it holds the scale.
+   No images to hand? Click *Try it with example images*.
+2. **Pick what your sample looks like.** Click one of three cards:
+   - *Diatoms lying apart from each other*: found automatically.
+   - *Many small round cells packed together* (e.g. *Thalassiosira* cultures): say roughly how wide one
+     cell is. Condition isn't graded in this mode.
+   - *Crowded or messy: I'll mark them myself*: nothing is found automatically; you mark each diatom
+     in step 3.
+3. **Check each image, and fix any mistakes.** Pick an image from the list. The green box says where the
+   scale came from (if it's wrong, open *Scale looks wrong? Correct it*). The tiles give the counts,
+   and the table lists every diatom by the number on the image. To fix something, choose a tool above
+   the image:
+   - **➕ Add:** drag from one tip of a missed diatom to the other (or click the centre of a round one);
+     the outline is traced for you.
+   - **➖ Remove:** click an outline that isn't a diatom.
+   - **🏷️ Grade:** pick intact, cracked or broken, then click a diatom. Use it for diatoms you added
+     (they start as *not assessed*) or when you disagree with the tool.
+   - **↶ Undo** takes back the last change; **Start over** clears your changes to that image.
+4. **Save your results.** One Excel file for all images, plus the marked-up pictures as a ZIP.
 
-1. **Add your images.** Drag SEM images (TIF, JPG, PNG; several at once is fine) into the box. For
-   Hitachi or JEOL images, add the `.txt` file that sits next to each image as well. No images to hand?
-   Click *Try it with example images*.
-2. **Describe the sample:** *diatoms lying apart from each other*, *many small round cells packed
-   together* (you give the rough cell size), or *crowded or messy: I will point out the diatoms myself*.
-   If the results look poor, try another description.
-3. **Check each image, and fix any mistakes.** The scale is shown in words (for example "1 pixel =
-   6.6 nm, from the microscope's file"); if it could not be found you are asked what the scale bar
-   says. Outlines are coloured by condition: green intact, amber cracked, red broken, grey cut off by
-   the image edge. The table beside the image lists every diatom by the number shown on it.
-   - Missed a diatom? Choose **➕ Add a missed diatom** and **drag along it from one tip to the other**
-     (for a round one, just click its centre). The outline is traced for you.
-   - Wrong outline? Choose **➖ Remove a wrong one** and click it.
-   - Wrong condition, or a diatom you added? Choose **🏷️ Set condition**, pick intact, cracked or
-     broken, and click the diatom.
-   - **↶ Undo** takes back the last change. Every measurement updates straight away, and diatoms you
-     marked are labelled as yours in the spreadsheet.
-4. **Save your results:** one Excel file with every diatom, every pore, a summary per image and a sheet
-   explaining each column, plus the marked-up images.
+**What the colours mean**
 
-Under **More tools** you can teach the tool species names (pick a few diatoms by number and name the
-species; from then on it suggests names), add a whole reference collection, and save corrected images
-as training examples for a detection model (see *Training a detection model*). Fine-tuning settings
-(thresholds, folders, a scale for all images) are in the collapsed **Expert settings** panel on the
-left; everyday use never needs them. Every value used is recorded in the spreadsheet's *Settings*
-sheet, so results are reproducible.
+| Outline | Meaning |
+|---|---|
+| 🟩 green | Intact |
+| 🟨 amber | Cracked: a crack line or a small chip |
+| 🟥 red | Broken: a sharp inward corner, a bite out of the edge, or a very irregular shape |
+| ⬜ grey | Cut off by the image edge, or not assessed |
+| 🔵 blue ring | A pore |
+
+**More tools** (bottom of the page): a short how-to, *teach the tool species names* (pick a few diatoms by
+number and name the species; from then on it suggests names), and *save training examples* for a
+detection model (see *Training a detection model*). Fine-tuning settings are in the collapsed
+**Expert settings** panel (» at the top left); everyday use never needs them.
 
 **For developers:** `pip install -r requirements.txt` then `streamlit run app.py` starts the same app.
 
@@ -285,6 +292,7 @@ diatom_analyzer/
   __main__.py                batch command line
 sample_data/                 demo images and their ground truth
 reports/                     benchmark reports
+docs/                        screenshots and the overview slides (Diatom_Analyzer_overview.pptx)
 tests/                       pytest suite
 ```
 
