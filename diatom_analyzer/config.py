@@ -29,6 +29,8 @@ class DamageConfig:
     chip_corner_deg: float = 15.0  # a smaller sharp corner is a chip: graded cracked
     fragmented_solidity: float = 0.85
     fragmented_notch_ratio: float = 0.25
+    constricted_solidity: float = 0.75  # limits for outlines with a natural waist on both margins
+    constricted_notch_ratio: float = 0.35
     crack_length_ratio: float = 0.20
     max_crack_candidates: int = 3  # more parallel long dark lines than this are striae, not cracks
 

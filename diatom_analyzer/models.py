@@ -48,12 +48,14 @@ class Frustule:
     notch_depth_ratio: float
     inward_corner_deg: float
     touches_border: bool
+    constricted: bool = False  # a waist mirrored on both margins (natural, e.g. capitate apices)
     view: str = "uncertain"
     morphotype: str = "unclassified"
     damage: str = "uncertain"
     crack_length_px: float = 0.0
     crack_candidates: list = field(default_factory=list)
     origin: str = "auto"  # "auto" (detected) or "manual" (added by a click)
+    graded_by: str = "tool"  # "tool", or "you" when the condition was set by hand
     species: str = ""  # "" = no species library loaded, "unknown" = no confident match
     species_confidence: float = 0.0
     species_distance: float = float("nan")

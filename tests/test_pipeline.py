@@ -179,8 +179,46 @@ def test_drag_along_axis_traces_pennate():
                         edits=(remove, ("add", cx - dx, cy - dy, cx + dx, cy + dy, 0)))
     assert len(res.frustules) == 1 and res.frustules[0].origin == "manual"
     fr = res.frustules[0]
+    assert fr.damage == "not graded"  # a traced outline is approximate, so the user grades it
     assert fr.length_px * 0.05 == pytest.approx(truth["frustules"][0]["mask_length_um"], rel=0.05)
     assert fr.area_px == pytest.approx(truth["frustules"][0]["area_px"], rel=0.1)
+
+
+def test_set_condition_by_hand(demo_scene, demo_result):
+    from diatom_analyzer.export import frustule_rows
+    data, truth = demo_scene
+    fr = next(f for f in demo_result[0].frustules if f.damage == "intact")
+    x, y = fr.centroid_px
+    res = analyze_image(data, name="g.png", manual_um_per_px=truth["um_per_px"],
+                        edits=(("grade", x, y, x, y, "fragmented"),))
+    graded = next(f for f in res.frustules if f.frustule_id == fr.frustule_id)
+    assert (graded.damage, graded.graded_by, graded.morphotype) == ("fragmented", "you", "fragment")
+    assert sum(f.graded_by == "you" for f in res.frustules) == 1
+    row = next(r for r in frustule_rows(res) if r["frustule_id"] == fr.frustule_id)
+    assert row["damage_set_by"] == "you"
+
+
+def _capitate(bite=False):
+    """A Didymosphenia-like outline: a body with a rounded head on a narrower neck."""
+    import cv2
+    mask = np.zeros((260, 160), np.uint8)
+    cv2.ellipse(mask, (80, 160), (38, 80), 0, 0, 360, 1, -1)  # body
+    cv2.rectangle(mask, (60, 60), (100, 110), 1, -1)  # neck
+    cv2.ellipse(mask, (80, 50), (34, 28), 0, 0, 360, 1, -1)  # head
+    if bite:
+        pts = np.array([[118, 150], [92, 175], [118, 200]], np.int32)
+        cv2.fillPoly(mask, [pts], 0)  # a fracture bites into one margin only
+    return mask.astype(np.int32)
+
+
+def test_natural_waist_is_not_a_break():
+    from diatom_analyzer.damage import grade_damage
+    from diatom_analyzer.measurements import measure_frustules
+    fr = measure_frustules(_capitate())[0]
+    assert fr.constricted
+    assert grade_damage(fr, []) == "intact"
+    broken = measure_frustules(_capitate(bite=True))[0]
+    assert grade_damage(broken, []) == "fragmented"
 
 
 def test_training_example_export(tmp_path):

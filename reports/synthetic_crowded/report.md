@@ -6,127 +6,127 @@ Random scenes of 7 look-alike species at 35-70 nm/pixel with random damage and n
 
 | measure | result |
 |---|---|
-| Frustules (truth / detected / matched IoU≥0.5) | 133 / 114 / 111 |
-| Precision / recall / F1 | 97.4 % / 83.5 % / 89.9 % |
-| Mean count error per image | 0.63 |
+| Frustules (truth / detected / matched IoU≥0.5) | 156 / 125 / 117 |
+| Precision / recall / F1 | 93.6 % / 75.0 % / 83.3 % |
+| Mean count error per image | 1.03 |
 | Scale correct (±1 %) | 30/30 |
-| Length error (mean / 90th pct) | 4.0 % / 4.4 % |
-| Width error (mean) | 12.2 % |
-| Orientation error (mean / max) | 1.16° / 8.56° |
-| Centric vs pennate correct | 92.1 % |
-| Pore count error (mean) | 15.1 % |
-| Pore diameter bias (mean) | -8 nm |
-| Time per image | 1.6 s |
+| Length error (mean / 90th pct) | 5.3 % / 9.5 % |
+| Width error (mean) | 14.5 % |
+| Orientation error (mean / max) | 1.24° / 18.92° |
+| Centric vs pennate correct | 91.2 % |
+| Pore count error (mean) | 12.8 % |
+| Pore diameter bias (mean) | +5 nm |
+| Time per image | 2.0 s |
 
 ## Damage grading (no species library)
 
-Accuracy: **82.0 %**
+Accuracy: **84.6 %**
 
 | truth \ predicted | intact | cracked | fragmented | uncertain |
 |---|---|---|---|---|
-| intact | 59 | 1 | 14 | 0 |
-| cracked | 0 | 16 | 3 | 0 |
-| fragmented | 1 | 1 | 16 | 0 |
+| intact | 76 | 4 | 10 | 0 |
+| cracked | 1 | 11 | 0 | 0 |
+| fragmented | 3 | 0 | 12 | 0 |
 
 | species | damage correct |
 |---|---|
-| Coscinodiscus-like | 16/22 |
-| Cyclotella-like | 18/20 |
-| Cymbella-like | 17/19 |
+| Coscinodiscus-like | 14/18 |
+| Cyclotella-like | 18/21 |
+| Cymbella-like | 21/23 |
 | Navicula-like | 10/11 |
-| Pinnularia-like | 8/13 |
-| Synedra-like | 4/6 |
-| Triceratium-like | 18/20 |
+| Pinnularia-like | 17/20 |
+| Synedra-like | 5/9 |
+| Triceratium-like | 14/15 |
 
 ### Species, 1 example(s) per species (all frustules)
 
-Accuracy: **85.6 %** (95/111)
+Accuracy: **80.3 %** (94/117)
 
 | species | correct | accuracy |
 |---|---|---|
-| Coscinodiscus-like | 16/22 | 72.7 % |
-| Cyclotella-like | 19/20 | 95.0 % |
-| Cymbella-like | 17/19 | 89.5 % |
+| Coscinodiscus-like | 11/18 | 61.1 % |
+| Cyclotella-like | 21/21 | 100.0 % |
+| Cymbella-like | 14/23 | 60.9 % |
 | Navicula-like | 10/11 | 90.9 % |
-| Pinnularia-like | 10/13 | 76.9 % |
-| Synedra-like | 5/6 | 83.3 % |
-| Triceratium-like | 18/20 | 90.0 % |
+| Pinnularia-like | 19/20 | 95.0 % |
+| Synedra-like | 7/9 | 77.8 % |
+| Triceratium-like | 12/15 | 80.0 % |
 
-Most common mistakes: Pinnularia-like → Navicula-like (3); Coscinodiscus-like → Pinnularia-like (2); Cymbella-like → Navicula-like (2); Coscinodiscus-like → Cyclotella-like (2); Triceratium-like → unknown (1); Navicula-like → Cymbella-like (1)
+Most common mistakes: Cymbella-like → Navicula-like (9); Coscinodiscus-like → unknown (3); Triceratium-like → Pinnularia-like (3); Coscinodiscus-like → Cymbella-like (2); Synedra-like → Navicula-like (2); Coscinodiscus-like → Navicula-like (1)
 
-Intact frustules only: 85.1 %. Damage accuracy with this library (species-relative outline tests): 82.0 %.
+Intact frustules only: 83.3 %. Damage accuracy with this library (species-relative outline tests): 84.6 %.
 
 ### Species, 3 example(s) per species (all frustules)
 
-Accuracy: **87.4 %** (97/111)
+Accuracy: **87.2 %** (102/117)
 
 | species | correct | accuracy |
 |---|---|---|
-| Coscinodiscus-like | 18/22 | 81.8 % |
-| Cyclotella-like | 19/20 | 95.0 % |
-| Cymbella-like | 18/19 | 94.7 % |
-| Navicula-like | 11/11 | 100.0 % |
-| Pinnularia-like | 10/13 | 76.9 % |
-| Synedra-like | 5/6 | 83.3 % |
-| Triceratium-like | 16/20 | 80.0 % |
+| Coscinodiscus-like | 11/18 | 61.1 % |
+| Cyclotella-like | 21/21 | 100.0 % |
+| Cymbella-like | 21/23 | 91.3 % |
+| Navicula-like | 9/11 | 81.8 % |
+| Pinnularia-like | 19/20 | 95.0 % |
+| Synedra-like | 9/9 | 100.0 % |
+| Triceratium-like | 12/15 | 80.0 % |
 
-Most common mistakes: Pinnularia-like → Navicula-like (3); Triceratium-like → unknown (2); Coscinodiscus-like → Cymbella-like (2); Triceratium-like → Cymbella-like (1); Cyclotella-like → unknown (1); Coscinodiscus-like → Navicula-like (1)
+Most common mistakes: Coscinodiscus-like → unknown (4); Triceratium-like → Pinnularia-like (3); Cymbella-like → Navicula-like (2); Navicula-like → Cymbella-like (2); Coscinodiscus-like → Navicula-like (1); Coscinodiscus-like → Cyclotella-like (1)
 
-Intact frustules only: 85.1 %. Damage accuracy with this library (species-relative outline tests): 82.0 %.
+Intact frustules only: 88.9 %. Damage accuracy with this library (species-relative outline tests): 84.6 %.
 
 ### Species, 5 example(s) per species (all frustules)
 
-Accuracy: **87.4 %** (97/111)
+Accuracy: **91.5 %** (107/117)
 
 | species | correct | accuracy |
 |---|---|---|
-| Coscinodiscus-like | 18/22 | 81.8 % |
-| Cyclotella-like | 19/20 | 95.0 % |
-| Cymbella-like | 18/19 | 94.7 % |
+| Coscinodiscus-like | 11/18 | 61.1 % |
+| Cyclotella-like | 21/21 | 100.0 % |
+| Cymbella-like | 22/23 | 95.7 % |
 | Navicula-like | 10/11 | 90.9 % |
-| Pinnularia-like | 10/13 | 76.9 % |
-| Synedra-like | 5/6 | 83.3 % |
-| Triceratium-like | 17/20 | 85.0 % |
+| Pinnularia-like | 19/20 | 95.0 % |
+| Synedra-like | 9/9 | 100.0 % |
+| Triceratium-like | 15/15 | 100.0 % |
 
-Most common mistakes: Triceratium-like → unknown (3); Pinnularia-like → Navicula-like (3); Coscinodiscus-like → Cymbella-like (2); Navicula-like → Cymbella-like (1); Cyclotella-like → unknown (1); Coscinodiscus-like → Navicula-like (1)
+Most common mistakes: Coscinodiscus-like → unknown (5); Coscinodiscus-like → Synedra-like (1); Coscinodiscus-like → Cymbella-like (1); Cymbella-like → Navicula-like (1); Pinnularia-like → Navicula-like (1); Navicula-like → Cymbella-like (1)
 
-Intact frustules only: 83.8 %. Damage accuracy with this library (species-relative outline tests): 82.0 %.
+Intact frustules only: 91.1 %. Damage accuracy with this library (species-relative outline tests): 84.6 %.
 
 ### Species missing from the library
 
-Leaving each species out of a 5-example library in turn, **67.6 %** of its intact specimens were reported as *unknown* (50/74); the rest were given the closest look-alike's name.
+Leaving each species out of a 5-example library in turn, **63.3 %** of its intact specimens were reported as *unknown* (57/90); the rest were given the closest look-alike's name.
 
 ## Per image
 
 | seed | truth | detected | matched | scale source | scale | s |
 |---|---|---|---|---|---|---|
-| 100 | 6 | 6 | 6 | scale_bar | ok | 2.5 |
-| 101 | 4 | 2 | 1 | scale_bar | ok | 1.2 |
-| 102 | 4 | 4 | 4 | scale_bar | ok | 1.3 |
-| 103 | 5 | 5 | 5 | scale_bar | ok | 2.2 |
-| 104 | 5 | 4 | 4 | scale_bar | ok | 1.2 |
-| 105 | 4 | 2 | 1 | scale_bar | ok | 4.5 |
-| 106 | 5 | 5 | 5 | scale_bar | ok | 2.0 |
-| 107 | 3 | 3 | 3 | scale_bar | ok | 0.9 |
-| 108 | 3 | 3 | 3 | scale_bar | ok | 1.1 |
-| 109 | 5 | 4 | 4 | scale_bar | ok | 1.4 |
-| 110 | 5 | 4 | 4 | scale_bar | ok | 1.2 |
-| 111 | 5 | 5 | 5 | scale_bar | ok | 1.0 |
-| 112 | 3 | 2 | 2 | scale_bar | ok | 1.5 |
-| 113 | 4 | 4 | 4 | scale_bar | ok | 3.5 |
-| 114 | 3 | 3 | 3 | scale_bar | ok | 0.9 |
-| 115 | 6 | 3 | 3 | scale_bar | ok | 1.2 |
-| 116 | 4 | 4 | 4 | scale_bar | ok | 1.6 |
-| 117 | 3 | 3 | 3 | scale_bar | ok | 1.2 |
-| 118 | 4 | 4 | 4 | scale_bar | ok | 1.9 |
-| 119 | 5 | 4 | 4 | scale_bar | ok | 1.4 |
-| 120 | 4 | 3 | 3 | scale_bar | ok | 1.6 |
-| 121 | 4 | 3 | 2 | scale_bar | ok | 2.0 |
-| 122 | 6 | 5 | 5 | scale_bar | ok | 1.7 |
-| 123 | 3 | 2 | 2 | scale_bar | ok | 1.2 |
-| 124 | 7 | 6 | 6 | scale_bar | ok | 2.1 |
-| 125 | 5 | 5 | 5 | scale_bar | ok | 1.3 |
-| 126 | 4 | 4 | 4 | scale_bar | ok | 1.4 |
-| 127 | 5 | 4 | 4 | scale_bar | ok | 1.2 |
-| 128 | 5 | 4 | 4 | scale_bar | ok | 1.7 |
-| 129 | 4 | 4 | 4 | scale_bar | ok | 0.9 |
+| 0 | 6 | 4 | 3 | scale_bar | ok | 2.9 |
+| 1 | 5 | 4 | 4 | scale_bar | ok | 1.4 |
+| 2 | 6 | 4 | 3 | scale_bar | ok | 1.2 |
+| 3 | 6 | 5 | 5 | scale_bar | ok | 4.3 |
+| 4 | 4 | 4 | 4 | scale_bar | ok | 1.8 |
+| 5 | 6 | 5 | 5 | scale_bar | ok | 1.6 |
+| 6 | 5 | 4 | 3 | scale_bar | ok | 1.8 |
+| 7 | 6 | 6 | 6 | scale_bar | ok | 3.4 |
+| 8 | 6 | 3 | 2 | scale_bar | ok | 2.0 |
+| 9 | 5 | 4 | 4 | scale_bar | ok | 1.0 |
+| 10 | 6 | 3 | 2 | scale_bar | ok | 2.4 |
+| 11 | 3 | 3 | 3 | scale_bar | ok | 1.0 |
+| 12 | 5 | 4 | 4 | scale_bar | ok | 1.8 |
+| 13 | 6 | 5 | 5 | scale_bar | ok | 1.9 |
+| 14 | 3 | 3 | 3 | scale_bar | ok | 2.4 |
+| 15 | 5 | 5 | 5 | scale_bar | ok | 1.1 |
+| 16 | 5 | 4 | 4 | scale_bar | ok | 1.0 |
+| 17 | 6 | 3 | 2 | scale_bar | ok | 1.3 |
+| 18 | 7 | 5 | 5 | scale_bar | ok | 1.6 |
+| 19 | 5 | 5 | 5 | scale_bar | ok | 1.4 |
+| 20 | 6 | 5 | 5 | scale_bar | ok | 3.2 |
+| 21 | 4 | 3 | 2 | scale_bar | ok | 2.4 |
+| 22 | 6 | 6 | 6 | scale_bar | ok | 1.2 |
+| 23 | 3 | 3 | 3 | scale_bar | ok | 2.4 |
+| 24 | 4 | 3 | 3 | scale_bar | ok | 2.0 |
+| 25 | 5 | 5 | 5 | scale_bar | ok | 1.9 |
+| 26 | 6 | 5 | 5 | scale_bar | ok | 1.6 |
+| 27 | 3 | 3 | 3 | scale_bar | ok | 2.4 |
+| 28 | 6 | 4 | 4 | scale_bar | ok | 3.2 |
+| 29 | 7 | 5 | 4 | scale_bar | ok | 3.4 |

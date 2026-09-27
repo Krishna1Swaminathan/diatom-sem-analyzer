@@ -2,66 +2,66 @@
  "frames": 30,
  "crowded": true,
  "detection": {
-  "precision": 0.9736842105263158,
-  "recall": 0.8345864661654135,
-  "f1": 0.8987854251012146,
-  "mean_abs_count_error": 0.6333333333333333
+  "precision": 0.936,
+  "recall": 0.75,
+  "f1": 0.8327402135231318,
+  "mean_abs_count_error": 1.0333333333333334
  },
  "calibration_correct": 1.0,
- "seconds_per_frame": 1.62436900138855,
- "damage_accuracy": 0.8198198198198198,
- "length_error": 0.03998077102283987,
- "width_error": 0.12156093978535713,
- "orientation_error_deg": 1.1611828585700967,
- "centric_vs_pennate": 0.9210526315789473,
- "pore_count_error": 0.1512791830788847,
- "pore_diameter_bias_um": -0.00768340727286913,
+ "seconds_per_frame": 2.0380119482676187,
+ "damage_accuracy": 0.8461538461538461,
+ "length_error": 0.053462535468735785,
+ "width_error": 0.14495079385698323,
+ "orientation_error_deg": 1.2357242029751994,
+ "centric_vs_pennate": 0.9120879120879121,
+ "pore_count_error": 0.12751967250115512,
+ "pore_diameter_bias_um": 0.005135981211155893,
  "species": {
   "1": {
-   "accuracy": 0.8558558558558559,
-   "n": 111,
+   "accuracy": 0.8034188034188035,
+   "n": 117,
    "per_species": {
-    "Coscinodiscus-like": 0.7272727272727273,
-    "Cyclotella-like": 0.95,
-    "Triceratium-like": 0.9,
-    "Cymbella-like": 0.8947368421052632,
+    "Pinnularia-like": 0.95,
+    "Cyclotella-like": 1.0,
+    "Synedra-like": 0.7777777777777778,
+    "Coscinodiscus-like": 0.6111111111111112,
+    "Triceratium-like": 0.8,
     "Navicula-like": 0.9090909090909091,
-    "Pinnularia-like": 0.7692307692307693,
-    "Synedra-like": 0.8333333333333334
+    "Cymbella-like": 0.6086956521739131
    },
-   "intact_accuracy": 0.8513513513513513,
-   "damage_accuracy_with_library": 0.8198198198198198
+   "intact_accuracy": 0.8333333333333334,
+   "damage_accuracy_with_library": 0.8461538461538461
   },
   "3": {
-   "accuracy": 0.8738738738738738,
-   "n": 111,
+   "accuracy": 0.8717948717948718,
+   "n": 117,
    "per_species": {
-    "Coscinodiscus-like": 0.8181818181818182,
-    "Cyclotella-like": 0.95,
+    "Pinnularia-like": 0.95,
+    "Cyclotella-like": 1.0,
+    "Synedra-like": 1.0,
+    "Coscinodiscus-like": 0.6111111111111112,
     "Triceratium-like": 0.8,
-    "Cymbella-like": 0.9473684210526315,
-    "Navicula-like": 1.0,
-    "Pinnularia-like": 0.7692307692307693,
-    "Synedra-like": 0.8333333333333334
+    "Navicula-like": 0.8181818181818182,
+    "Cymbella-like": 0.9130434782608695
    },
-   "intact_accuracy": 0.8513513513513513,
-   "damage_accuracy_with_library": 0.8198198198198198
+   "intact_accuracy": 0.8888888888888888,
+   "damage_accuracy_with_library": 0.8461538461538461
   },
   "5": {
-   "accuracy": 0.8738738738738738,
-   "n": 111,
+   "accuracy": 0.9145299145299145,
+   "n": 117,
    "per_species": {
-    "Coscinodiscus-like": 0.8181818181818182,
-    "Cyclotella-like": 0.95,
-    "Triceratium-like": 0.85,
-    "Cymbella-like": 0.9473684210526315,
+    "Pinnularia-like": 0.95,
+    "Cyclotella-like": 1.0,
+    "Synedra-like": 1.0,
+    "Coscinodiscus-like": 0.6111111111111112,
+    "Triceratium-like": 1.0,
     "Navicula-like": 0.9090909090909091,
-    "Pinnularia-like": 0.7692307692307693,
-    "Synedra-like": 0.8333333333333334
+    "Cymbella-like": 0.9565217391304348
    },
-   "intact_accuracy": 0.8378378378378378,
-   "damage_accuracy_with_library": 0.8198198198198198
+   "intact_accuracy": 0.9111111111111111,
+   "damage_accuracy_with_library": 0.8461538461538461
   }
  },
- "unseen_species_reported_unknown": 0.6756756756756757
+ "unseen_species_reported_unknown": 0.6333333333333333
 }

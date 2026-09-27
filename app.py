@@ -206,6 +206,8 @@ def friendly_table(res):
     out["Average pore size (µm)"] = rows["pore_mean_diameter_um"]
     if (rows["origin"] == "manual").any():
         out["Marked by"] = rows["origin"].map({"manual": "you", "auto": "tool"})
+    if (rows["damage_set_by"] == "you").any():
+        out["Condition set by"] = rows["damage_set_by"]
     return out
 
 
@@ -364,7 +366,12 @@ def image_label(name):
     return f"{name}  ({mark})"
 
 
-chosen = st.selectbox("Image", names, format_func=image_label) if len(names) > 1 else names[0]
+# The labels carry live counts, so a correction rebuilds this widget; remembering the choice keeps it.
+if state.get("current_image") not in names:
+    state.current_image = names[0]
+chosen = st.selectbox("Image", names, index=names.index(state.current_image),
+                      format_func=image_label) if len(names) > 1 else names[0]
+state.current_image = chosen
 res = results[names.index(chosen)]
 cal = res.calibration
 um = cal.um_per_px if cal.ok else None
@@ -410,19 +417,29 @@ m[1].metric("Intact", counts["intact"])
 m[2].metric("Cracked", counts["cracked"])
 m[3].metric("Broken", counts["fragmented"])
 m[4].metric("Pores measured", sum(len(f.pores) for f in res.frustules))
+note = st.empty()  # always present, so the layout below keeps its place when the note appears
 if counts["uncertain"] or counts["not graded"]:
-    st.caption(f"{counts['uncertain']} diatom(s) are cut off by the image edge and {counts['not graded']} were "
+    note.caption(f"{counts['uncertain']} diatom(s) are cut off by the image edge and {counts['not graded']} were "
                "not assessed for damage, so they are not counted as intact, cracked or broken.")
 
 left, right = st.columns([3, 2])
 with left:
-    tool = st.segmented_control("What do you want to do?", ["👀 Look", "➕ Add a missed diatom", "➖ Remove a wrong one"],
+    tool = st.segmented_control("What do you want to do?", ["👀 Look", "➕ Add a missed diatom", "➖ Remove a wrong one",
+                                                            "🏷️ Set condition"],
                                 default="👀 Look", key=f"tool_{chosen}") or "👀 Look"
     size_hint_um = 10.0
-    if tool.startswith("➕"):
+    grade = "intact"
+    if tool.startswith("🏷️"):
+        g1, g2 = st.columns([2, 3])
+        grade = g1.radio("Mark as", ["intact", "cracked", "fragmented"], format_func=CONDITION.get, horizontal=True,
+                         key=f"grade_{chosen}")
+        g2.info("**Click on a diatom** to set its condition. Use this when the tool got it wrong, "
+                "or for diatoms it did not assess.")
+    elif tool.startswith("➕"):
         e1, e2 = st.columns([3, 2])
         e1.info("**Drag along the diatom from one tip to the other.** The outline is traced for you. "
-                "For a round diatom you can also just click its centre.")
+                "For a round diatom you can also just click its centre. Diatoms you add are listed as "
+                "*Not assessed*; grade them with **🏷️ Set condition**.")
         default_size = float(np.median([f.equiv_diameter_px for f in res.frustules]) * um) \
             if (res.frustules and um) else 10.0
         size_hint_um = e2.number_input("Round diatoms are about (µm) wide", 0.1, 5000.0, round(default_size, 1), 0.5,
@@ -437,8 +454,13 @@ with left:
     if tool.startswith("👀"):
         st.image(display, width="stretch")
     else:
-        click = streamlit_image_coordinates(display, key=f"clicks_{chosen}", width="stretch", click_and_drag=True,
-                                            image_format="JPEG", jpeg_quality=85, cursor="crosshair")
+        # Each correction redraws the picture; reserving its space stops the page jumping while it reloads.
+        st.markdown(f"<style>.st-key-click_area {{ aspect-ratio: {display.width} / {display.height}; }}</style>",
+                    unsafe_allow_html=True)
+        with st.container(key="click_area"):
+            click = streamlit_image_coordinates(display, key=f"clicks_{chosen}", width="stretch",
+                                                click_and_drag=True, image_format="JPEG", jpeg_quality=85,
+                                                cursor="crosshair")
         if click and click.get("unix_time") != state.last_click.get(chosen):
             state.last_click[chosen] = click["unix_time"]
             fx = overlay.shape[1] / click["width"]
@@ -450,6 +472,8 @@ with left:
                     size_px = size_hint_um / um if um else size_hint_um
                     edit = ("add", x1, y1, min(max(x2, 0), overlay.shape[1] - 1),
                             min(max(y2, 0), res.analysis_height - 1), size_px)
+                elif tool.startswith("🏷️"):
+                    edit = ("grade", x1, y1, x1, y1, grade)
                 else:
                     edit = ("remove", x1, y1, x1, y1, 0)
                 state.edits.setdefault(chosen, []).append(edit)
@@ -459,8 +483,9 @@ with left:
     edits_here = state.edits.get(chosen, [])
     if edits_here:
         c1, c2, c3 = st.columns([2, 1, 1])
-        added = sum(e[0] == "add" for e in edits_here)
-        c1.caption(f"Your changes to this image: {added} added, {len(edits_here) - added} removed")
+        kinds = [e[0] for e in edits_here]
+        c1.caption(f"Your changes to this image: {kinds.count('add')} added, {kinds.count('remove')} removed, "
+                   f"{kinds.count('grade')} condition(s) set")
         if c2.button("↶ Undo", key=f"undo_{chosen}"):
             edits_here.pop()
             st.rerun()
@@ -615,7 +640,8 @@ with st.expander("How to use this tool"):
         "2. **Describe the sample** in step 2. If the results look poor, try another description.\n"
         "3. **Check each image** in step 3. Pick an image from the list; outlines are coloured by condition. "
         "Missed a diatom? Choose *➕ Add a missed diatom* and drag along it. Wrong outline? Choose "
-        "*➖ Remove a wrong one* and click it. *↶ Undo* takes back your last change.\n"
+        "*➖ Remove a wrong one* and click it. Wrong condition? Choose *🏷️ Set condition* and click the "
+        "diatom. *↶ Undo* takes back your last change.\n"
         "4. **Download** the Excel file in step 4.\n\n"
         "The scale is read automatically from the microscope's file or the scale bar; if it can't be, "
         "you'll be asked what the scale bar says. Nothing leaves this computer. To quit, close this browser "
