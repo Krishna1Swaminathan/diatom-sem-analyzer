@@ -61,7 +61,8 @@ def _notch_depth(contour):
 
 
 def _sharpest_inward_corner(contour, window=0.02, ignore=None):
-    """Largest inward (concave) turn of the outline, in degrees, over ~2 % of the perimeter.
+    """Largest inward (concave) turn of the outline, in degrees, over ~2 % of the perimeter,
+    and whether the outline has a natural waist (see ``_paired_across``, which is not counted).
 
     Intact valves have smooth outlines; even concave margins (crescent-shaped species) bend
     gradually. Fracture edges meet the natural margin at sharp re-entrant corners.
@@ -71,7 +72,7 @@ def _sharpest_inward_corner(contour, window=0.02, ignore=None):
     pts = contour[:, 0, :].astype(float)
     n = len(pts)
     if n < 40:
-        return 0.0
+        return 0.0, False
     skip = None
     if ignore is not None and ignore.any():
         xi, yi = contour[:, 0, 0], contour[:, 0, 1]
@@ -91,7 +92,28 @@ def _sharpest_inward_corner(contour, window=0.02, ignore=None):
         near = np.convolve(np.concatenate([skip[-m:], skip, skip[:m]]).astype(float),
                            np.ones(2 * m + 1), mode="same")[m:-m] > 0
         inward = np.where(near, 0.0, inward)
-    return float(np.degrees(inward.max()))
+    waist = _paired_across(pts, inward)
+    return float(np.degrees(np.where(waist, 0.0, inward).max())), bool(waist.any())
+
+
+def _paired_across(pts, inward, min_deg=8.0, band=0.08, share=0.4):
+    """Outline points whose inward bend is mirrored on the opposite margin at the same position
+    along the long axis: a waist or constriction (capitate and panduriform species, such as
+    Didymosphenia's neck), which is natural. A fracture bites into one margin only."""
+    centred = pts - pts.mean(0)
+    _, vecs = np.linalg.eigh(np.cov(centred.T))
+    a, b = centred @ vecs[:, 1], centred @ vecs[:, 0]  # along, across the long axis
+    span = a.max() - a.min()
+    bent = np.degrees(inward) >= min_deg
+    out = np.zeros(len(pts), bool)
+    if span <= 0 or not bent.any():
+        return out
+    idx = np.nonzero(bent)[0]
+    for i in idx:
+        opposite = idx[(np.sign(b[idx]) != np.sign(b[i])) & (np.abs(a[idx] - a[i]) <= band * span)]
+        if len(opposite) and inward[opposite].max() >= share * inward[i]:
+            out[i] = True
+    return out
 
 
 def _damage_view(mask, width):
@@ -162,6 +184,7 @@ def measure_frustules(labels, analysis_shape=None, exclude_boxes=()):
         damage_contour = _largest_contour(damage_mask) if damage_mask is not region.image else contour
         damage_region = measure.regionprops(damage_mask.astype(np.uint8))[0]
         cy, cx = region.centroid
+        corner, waist = _sharpest_inward_corner(damage_contour, window=0.04, ignore=contact)
         fr = Frustule(
             frustule_id=region.label,
             bbox=region.bbox,
@@ -176,8 +199,9 @@ def measure_frustules(labels, analysis_shape=None, exclude_boxes=()):
             ellipse_iou=_ellipse_iou(region),
             circularity=float(min(1.0, 4 * math.pi * area / perimeter**2)),
             notch_depth_ratio=_notch_depth(damage_contour) / width if width else 0.0,
-            inward_corner_deg=_sharpest_inward_corner(damage_contour, window=0.04, ignore=contact),
+            inward_corner_deg=corner,
             touches_border=bool(touches),
+            constricted=waist,
         )
         if aspect >= ViewConfig().round_aspect:
             fr.orientation_deg = _orientation_deg(region)

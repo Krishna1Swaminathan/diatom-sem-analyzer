@@ -18,6 +18,8 @@ import numpy as np
 from scipy import ndimage as ndi
 from skimage import filters, segmentation
 
+from . import morphology as fast_morph
+
 MIN_DRAG_PX = 8  # shorter drags are treated as clicks
 
 
@@ -47,6 +49,34 @@ def _grow(image, labels, box, seed, background):
     return mask
 
 
+def _smooth(mask, seed, axis, length):
+    """Trim debris and neighbours' edges that the watershed let in.
+
+    They join the frustule through narrow necks, so an opening at a fifth of the frustule's mean
+    width cuts them off; the piece holding the dragged axis is kept, and so are trimmed pieces lying
+    on the axis (tapering apices). Skipped if it would remove more than a third of the area.
+    """
+    area = int(mask.sum())
+    width = area / max(length, 1.0)
+    r = 0.2 * width
+    if r < 1.5:
+        return mask
+    p = int(np.ceil(r)) + 2
+    filled = ndi.binary_fill_holes(mask)
+    work = fast_morph.opening(np.pad(filled, p), r)[p:-p, p:-p]
+    trimmed, _ = ndi.label(filled & ~work)
+    tips = np.unique(trimmed[axis & (trimmed > 0)])
+    work |= np.isin(trimmed, tips[tips > 0])
+    work = fast_morph.closing(work, 0.5 * r)
+    comp, _ = ndi.label(work)
+    keep = np.unique(comp[seed & (comp > 0)])
+    if not len(keep):
+        return mask
+    sizes = np.bincount(comp.ravel())
+    work = comp == keep[np.argmax(sizes[keep])]
+    return work if work.sum() >= area * 2 / 3 else mask
+
+
 def outline_along(image, labels, p, q):
     """Frustule whose long axis runs from p to q (pixel coordinates)."""
     h, w = image.shape
@@ -58,7 +88,14 @@ def outline_along(image, labels, p, q):
     d, t = _segment_distance(xx, yy, p, q)
     background = (d >= 0.5 * length) | (((t <= 0) | (t >= 1)) & (d >= 0.08 * length))
     seed = (d <= 1.5) & (t > 0.04) & (t < 0.96)  # leave the tips free to find the apex edges
-    return _grow(image, labels, (x0, y0, x1, y1), seed, background)
+    mask = _grow(image, labels, (x0, y0, x1, y1), seed, background)
+    full_seed, axis = np.zeros_like(mask), np.zeros_like(mask)
+    full_seed[y0:y1, x0:x1] = seed
+    ux, uy = (q[0] - p[0]) / length, (q[1] - p[1]) / length
+    along = ((xx - p[0]) * ux + (yy - p[1]) * uy) / length
+    across = np.abs((xx - p[0]) * uy - (yy - p[1]) * ux)
+    axis[y0:y1, x0:x1] = (across <= 1.5) & (along > -0.2) & (along < 1.2)  # the drag line, a little past the tips
+    return _smooth(mask, full_seed, axis, length) & (labels == 0)
 
 
 def outline_at(image, labels, x, y, size_px):

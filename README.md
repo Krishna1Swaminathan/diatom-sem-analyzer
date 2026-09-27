@@ -62,6 +62,8 @@ The page walks you through four steps:
    - Missed a diatom? Choose **➕ Add a missed diatom** and **drag along it from one tip to the other**
      (for a round one, just click its centre). The outline is traced for you.
    - Wrong outline? Choose **➖ Remove a wrong one** and click it.
+   - Wrong condition, or a diatom you added? Choose **🏷️ Set condition**, pick intact, cracked or
+     broken, and click the diatom.
    - **↶ Undo** takes back the last change. Every measurement updates straight away, and diatoms you
      marked are labelled as yours in the spreadsheet.
 4. **Save your results:** one Excel file with every diatom, every pore, a summary per image and a sheet
@@ -160,18 +162,18 @@ at 35-70 nm/pixel, with noise, uneven illumination and a databar scale bar.
 |---|---|
 | Frustules found (IoU ≥ 0.5) | 143 / 143, no false detections |
 | Scale read from the scale bar | 30 / 30 images |
-| Length | mean error 0.5 % |
+| Length | mean error 0.8 % |
 | Orientation | mean error 0.02°, worst 0.18° |
-| Pore count | mean error 1.2 % |
+| Pore count | mean error 1.1 % |
 | Pore diameter | reads 16 nm large on average (optical blur) |
-| Damage grade (no library) | 99.3 % |
-| Species, 1 / 3 / 5 examples per species | 88 % / 95 % / 99 % |
-| Species missing from the library reported as *unknown* | 71 % (the rest get a look-alike's name) |
-| Time per image | about 1.7 s on one CPU core |
+| Damage grade (no library) | 97.2 % |
+| Species, 1 / 3 / 5 examples per species | 90 % / 94 % / 99 % |
+| Species missing from the library reported as *unknown* | 69 % (the rest get a look-alike's name) |
+| Time per image | about 1.6 s on one CPU core |
 
 **Crowded scenes** (frustules touching and overlapping, `--crowded`,
-[`reports/synthetic_crowded/report.md`](reports/synthetic_crowded/report.md)) are harder: 84 % of
-frustules found with 97 % precision, and 82 % damage accuracy. A frustule lying across another has no
+[`reports/synthetic_crowded/report.md`](reports/synthetic_crowded/report.md)) are harder: 75 % of
+frustules found with 94 % precision, and 85 % damage accuracy. A frustule lying across another has no
 narrow neck to split at; this is where the optional Cellpose backend is meant to help.
 
 Run `pytest` for the automated checks (metadata formats, resized images, 16-bit TIFFs, JPEGs,
@@ -191,9 +193,12 @@ cultures, *Didymosphenia*, Richmond diatomite):
 - **Crowded round cells** (*Thalassiosira* cultures): choose *Many small round cells packed together* in step 2
   and give the rough cell size. On the culture images it finds most cells with few false
   circles; damage is not graded in this mode.
-- **Not yet reliable:** dense fields of touching *Didymosphenia* on precipitate, and diatom fragments among
-  mineral grains (raw Richmond diatomite). Classical thresholding cannot separate these from the
-  background; a trained model (e.g. Cellpose fine-tuned on a few hand-outlined lab images) is the next step.
+- **Dense fields of touching *Didymosphenia* on precipitate**, and diatom fragments among mineral grains
+  (raw Richmond diatomite): automatic thresholding cannot separate these from the background. Choose
+  *Crowded or messy* in step 2, drag along each diatom from tip to tip, and grade it with
+  *🏷️ Set condition*. Saved as training examples, these outlines can train a Cellpose model (below).
+- **Natural waists are not breaks:** an outline that narrows on both sides at the same point (the neck
+  below *Didymosphenia*'s head, constricted pennates) is recognised as natural, so it is not graded broken.
 
 ## Testing and training on real datasets
 

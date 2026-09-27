@@ -8,7 +8,7 @@ from .calibration import calibrate
 from .classification import extract_features
 from .config import AnalysisConfig
 from .damage import grade_damage
-from .editing import apply_edits
+from .editing import apply_edits, label_at
 from .loading import load_image
 from .measurements import classify_morphotype, classify_view, measure_frustules
 from .models import ImageResult
@@ -51,12 +51,27 @@ def identify_and_grade(fr, library, config):
     fr.morphotype = classify_morphotype(fr, config.view)
 
 
+GRADES = ("intact", "cracked", "fragmented")
+
+
+def _apply_grades(frustules, labels, edits, config):
+    by_id = {fr.frustule_id: fr for fr in frustules}
+    for op, x1, y1, _x2, _y2, value in edits:
+        if op != "grade" or value not in GRADES:
+            continue
+        fr = by_id.get(label_at(labels, x1, y1))
+        if fr is not None:
+            fr.damage, fr.graded_by = value, "you"
+            fr.morphotype = classify_morphotype(fr, config.view)
+
+
 def analyze_image(source, name=None, config=None, manual_um_per_px=None, manual_bar_um=None,
                   library=None, databar_top=None, use_ocr=True, sidecar_text=None, edits=()):
     """Run the full pipeline on one image (a path, or raw bytes plus ``name``).
 
-    ``edits`` are manual corrections, ``("add" | "remove", x, y, size_px)``, replayed on top of the
-    automatic detection before anything is measured.
+    ``edits`` are manual corrections, ``(op, x1, y1, x2, y2, value)``, replayed in order: "add" and
+    "remove" change the outlines before anything is measured, "grade" sets the condition of the
+    frustule at (x1, y1) to ``value`` ("intact", "cracked" or "fragmented") afterwards.
     """
     config = config or AnalysisConfig()
     is_path = isinstance(source, (str, Path))
@@ -93,6 +108,9 @@ def analyze_image(source, name=None, config=None, manual_um_per_px=None, manual_
         fr.origin = "manual" if fr.frustule_id in manual else "auto"
         if config.segmentation.method == "round_cells" and fr.origin == "auto":
             fr.damage = "not graded"  # outlines are fitted circles, so outline-based grading is meaningless
+        elif fr.origin == "manual":
+            fr.damage = "not graded"  # a traced outline is approximate; its kinks would read as breaks
+    _apply_grades(frustules, labels, edits, config)
 
     if not frustules:
         warnings.append("No frustules were detected. Try lowering the minimum frustule size.")
