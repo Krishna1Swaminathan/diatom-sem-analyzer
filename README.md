@@ -178,9 +178,17 @@ at 35-70 nm/pixel, with noise, uneven illumination and a databar scale bar.
 | Species missing from the library reported as *unknown* | 69 % (the rest get a look-alike's name) |
 | Time per image | about 1.6 s on one CPU core |
 
+**Held-out check.** The rules were tuned while watching those 30 frames, so the same benchmark was
+run on 30 new frames never used for tuning (`--seed 1000`,
+[`reports/heldout/report.md`](reports/heldout/report.md)): 142 / 142 found with no false detections,
+length error 0.8 %, damage 97.2 % (intact 85/85, cracked 28/32, fragmented 25/25), pore count error
+1.7 %, species 94 % / 97 % / 98 % with 1 / 3 / 5 examples. Species always have a separate train and test
+set: the library is built from separate specimen images and scored on the frames' diatoms.
+
 **Crowded scenes** (frustules touching and overlapping, `--crowded`,
 [`reports/synthetic_crowded/report.md`](reports/synthetic_crowded/report.md)) are harder: 75 % of
-frustules found with 94 % precision, and 85 % damage accuracy. A frustule lying across another has no
+frustules found with 94 % precision, and 85 % damage accuracy (71 % and 94 % on held-out frames,
+[`reports/heldout_crowded/report.md`](reports/heldout_crowded/report.md)). A frustule lying across another has no
 narrow neck to split at; this is where the optional Cellpose backend is meant to help.
 
 Run `pytest` for the automated checks (metadata formats, resized images, 16-bit TIFFs, JPEGs,
