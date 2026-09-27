@@ -15,7 +15,10 @@ def _start():
 
 
 def _metric(at, label):
-    return next(m.value for m in at.metric if m.label == label)
+    """A number from the result tiles (rendered as HTML, so read from the markdown)."""
+    import re
+    html = next(m.value for m in at.markdown if m.value.startswith("<div class='da-stats'>"))
+    return re.search(rf"{label}</div><div class='v'>(\d+)<", html).group(1)
 
 
 def test_opens_on_step_one_without_errors():

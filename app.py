@@ -48,8 +48,8 @@ SAMPLE_TYPES = {
               "A fairly clean background; most diatoms don't touch."),
     "round": ("Many small round cells packed together",
               "Cultures of round (centric) diatoms, such as Thalassiosira."),
-    "manual": ("Crowded or messy: I will point out the diatoms myself",
-               "Nothing is found automatically. In step 3 you mark each diatom."),
+    "manual": ("Crowded or messy: I'll mark them myself",
+               "Nothing is found automatically; in step 3 you mark each diatom."),
     "model": ("Use the lab's trained model",
               "A detection model trained on this lab's own images."),
 }
@@ -89,6 +89,30 @@ st.markdown("""
 [data-testid="stMetricValue"] { color: var(--da-ink); font-weight: 750; }
 [data-testid="stImage"] img, iframe[title*="streamlit_image_coordinates"] { border-radius: 12px; }
 .stDownloadButton button { padding-top: 0.7rem; padding-bottom: 0.7rem; font-weight: 650; }
+/* step 2: the sample descriptions as selectable cards */
+.st-key-sample_cards div[role="radiogroup"] { display: grid; gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+.st-key-sample_cards div[role="radiogroup"] > div { padding: 14px 16px; border-radius: 14px;
+    border: 1.5px solid var(--da-border); background: #fff; transition: border-color .15s, box-shadow .15s; }
+.st-key-sample_cards div[role="radiogroup"] > div:hover { border-color: #9fc2ee; }
+.st-key-sample_cards div[role="radiogroup"] > div[data-selected="true"] { border-color: var(--da-blue);
+    background: #eef5fe; box-shadow: 0 0 0 3px rgba(42, 120, 214, 0.14); }
+.st-key-sample_cards div[role="radiogroup"] > div label { width: 100%; align-items: flex-start; }
+.st-key-sample_cards .stElementContainer, .st-key-sample_cards .stRadio,
+.st-key-sample_cards div[role="radiogroup"] { width: 100% !important; align-items: stretch !important; }
+/* result counts */
+.da-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 4px 0 2px; }
+.da-stat { background: var(--da-surface); border: 1px solid var(--da-border); border-radius: 14px; padding: 12px 16px; }
+.da-stat .v { font-size: 1.9rem; font-weight: 800; color: var(--da-ink); line-height: 1.15; }
+.da-stat .l { color: var(--da-muted); font-size: 0.9rem; display: flex; align-items: center; gap: 7px; }
+.da-stat .dot { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+@media (max-width: 800px) { .da-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* first screen: what the tool does, in three steps */
+.da-how { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 18px; }
+.da-how div { background: var(--da-surface); border: 1px solid var(--da-border); border-radius: 16px; padding: 18px 20px; }
+.da-how b { display: block; font-size: 1.05rem; color: var(--da-ink); margin: 6px 0 2px; }
+.da-how span { color: var(--da-muted); font-size: 0.95rem; }
+.da-how i { font-style: normal; font-size: 1.6rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -173,6 +197,14 @@ def legend_html():
                  f"border-radius:50%;border:2px solid rgb({r},{g},{b});display:inline-block;margin-right:6px'>"
                  f"</span>Pore</span>")
     return "<div style='font-size:0.95rem;line-height:1.9'>Outline colours: " + "".join(chips) + "</div>"
+
+
+def stat_tiles(items):
+    tiles = []
+    for label, value, colour in items:
+        dot = f"<span class='dot' style='background:rgb{tuple(colour)}'></span>" if colour else ""
+        tiles.append(f"<div class='da-stat'><div class='l'>{dot}{label}</div><div class='v'>{value}</div></div>")
+    return "<div class='da-stats'>" + "".join(tiles) + "</div>"
 
 
 def png_bytes(rgb):
@@ -296,20 +328,24 @@ if state.use_demo:
     sources += [(p.name, p.read_bytes()) for p in demo_files]
 
 if not sources:
-    st.markdown(
-        "**What you will get:** for every diatom in each image, its size in µm, shape, which way it "
-        "lies, and whether it is intact, cracked or broken, plus the position and size of every pore. "
-        "Everything downloads as one Excel spreadsheet.")
+    st.markdown("""<div class="da-how">
+      <div><i>📥</i><b>1. Drop in SEM images</b><span>Straight from the microscope. The scale is read from
+        the file or the scale bar.</span></div>
+      <div><i>🔍</i><b>2. Check the outlines</b><span>Every diatom is found, measured in µm and graded intact,
+        cracked or broken. Fix anything with a click.</span></div>
+      <div><i>📊</i><b>3. Download one Excel file</b><span>Every diatom and every pore, with a sheet explaining
+        each column.</span></div></div>""", unsafe_allow_html=True)
     st.stop()
 
 
 # --------------------------------------------------------------------------- step 2
 
-step(2, "What does your sample look like?", "This tells the tool how to find the diatoms.")
+step(2, "What does your sample look like?", "Pick the closest match. You can change it at any time.")
 options = ["apart", "round", "manual"] + (["model"] if trained_models() else [])
-sample = st.radio("Choose the description that fits best. You can change it at any time.", options,
-                  format_func=lambda k: SAMPLE_TYPES[k][0], captions=[SAMPLE_TYPES[k][1] for k in options],
-                  key="sample_type")
+with st.container(key="sample_cards"):
+    sample = st.radio("Choose the description that fits best. You can change it at any time.", options,
+                      format_func=lambda k: SAMPLE_TYPES[k][0], captions=[SAMPLE_TYPES[k][1] for k in options],
+                      key="sample_type", label_visibility="collapsed")
 cell_diameter = (2.0, 8.0)
 cellpose_model = ""
 if sample == "round":
@@ -411,12 +447,11 @@ with st.expander("Scale looks wrong? Correct it", expanded=not cal.ok):
             st.rerun()
 
 counts = {k: sum(f.damage == k for f in res.frustules) for k in CONDITION}
-m = st.columns(5)
-m[0].metric("Diatoms found", len(res.frustules))
-m[1].metric("Intact", counts["intact"])
-m[2].metric("Cracked", counts["cracked"])
-m[3].metric("Broken", counts["fragmented"])
-m[4].metric("Pores measured", sum(len(f.pores) for f in res.frustules))
+st.markdown(stat_tiles([
+    ("Diatoms found", len(res.frustules), None), ("Intact", counts["intact"], DAMAGE_COLORS["intact"]),
+    ("Cracked", counts["cracked"], DAMAGE_COLORS["cracked"]),
+    ("Broken", counts["fragmented"], DAMAGE_COLORS["fragmented"]),
+    ("Pores measured", sum(len(f.pores) for f in res.frustules), None)]), unsafe_allow_html=True)
 note = st.empty()  # always present, so the layout below keeps its place when the note appears
 if counts["uncertain"] or counts["not graded"]:
     note.caption(f"{counts['uncertain']} diatom(s) are cut off by the image edge and {counts['not graded']} were "
@@ -424,28 +459,27 @@ if counts["uncertain"] or counts["not graded"]:
 
 left, right = st.columns([3, 2])
 with left:
-    tool = st.segmented_control("What do you want to do?", ["👀 Look", "➕ Add a missed diatom", "➖ Remove a wrong one",
-                                                            "🏷️ Set condition"],
-                                default="👀 Look", key=f"tool_{chosen}") or "👀 Look"
+    tool = st.segmented_control("Fix mistakes", ["👀 View", "➕ Add", "➖ Remove", "🏷️ Grade"],
+                                default="👀 View", key=f"tool_{chosen}",
+                                help="Add a diatom the tool missed, remove a wrong outline, or set a diatom's "
+                                     "condition yourself.") or "👀 View"
     size_hint_um = 10.0
     grade = "intact"
     if tool.startswith("🏷️"):
         g1, g2 = st.columns([2, 3])
         grade = g1.radio("Mark as", ["intact", "cracked", "fragmented"], format_func=CONDITION.get, horizontal=True,
                          key=f"grade_{chosen}")
-        g2.info("**Click on a diatom** to set its condition. Use this when the tool got it wrong, "
-                "or for diatoms it did not assess.")
+        g2.info("**Click a diatom** to give it this condition.")
     elif tool.startswith("➕"):
         e1, e2 = st.columns([3, 2])
-        e1.info("**Drag along the diatom from one tip to the other.** The outline is traced for you. "
-                "For a round diatom you can also just click its centre. Diatoms you add are listed as "
-                "*Not assessed*; grade them with **🏷️ Set condition**.")
+        e1.info("**Drag from one tip of the diatom to the other**, or click the centre of a round one. "
+                "Then grade it with **🏷️ Grade**.")
         default_size = float(np.median([f.equiv_diameter_px for f in res.frustules]) * um) \
             if (res.frustules and um) else 10.0
         size_hint_um = e2.number_input("Round diatoms are about (µm) wide", 0.1, 5000.0, round(default_size, 1), 0.5,
                                        key=f"size_hint_{chosen}")
     elif tool.startswith("➖"):
-        st.info("**Click on an outline** that isn't a diatom, and it will be removed.")
+        st.info("**Click an outline** that isn't a diatom to remove it.")
 
     show_pores = st.toggle("Show pores", value=True, key=f"pores_{chosen}")
     overlay = render_overlay(res, show_pores=show_pores, show_axes=False)
@@ -497,16 +531,16 @@ with right:
     table = friendly_table(res)
     if len(table):
         st.markdown("**The diatoms in this image** (numbers match the image)")
-        st.dataframe(table, hide_index=True, width="stretch", height=520,
+        st.dataframe(table, hide_index=True, width="stretch",
                      column_config={c: st.column_config.NumberColumn(format="%.2f") for c in table.columns
                                     if table[c].dtype.kind == "f"})
     elif sample == "manual":
-        st.info("Nothing is marked yet. Choose **➕ Add a missed diatom** and drag along each diatom.")
+        st.info("Nothing is marked yet. Choose **➕ Add** and drag along each diatom, tip to tip.")
     else:
         st.info("No diatoms were found in this image. Try another description in step 2, or mark them "
-                "yourself with **➕ Add a missed diatom**.")
+                "yourself with **➕ Add**.")
 
-with st.expander("More details for this image (every measurement, pores, size charts)"):
+with st.expander("📋 Every measurement, every pore, and size charts"):
     tab_f, tab_p, tab_d = st.tabs(["All measurements", "Pores", "Size charts"])
     with tab_f:
         st.dataframe(pd.DataFrame(frustule_rows(res)), hide_index=True, width="stretch")
@@ -561,7 +595,20 @@ d2.download_button("⬇️ Download the marked-up images (ZIP)", zbuf.getvalue()
 st.divider()
 st.subheader("More tools")
 
-with st.expander("Teach the tool species names"):
+with st.expander("❓ How to use this tool"):
+    st.markdown(
+        "1. **Add images** in step 1: drag them in, several at once is fine.\n"
+        "2. **Describe the sample** in step 2. If the results look poor, try another description.\n"
+        "3. **Check each image** in step 3. Pick an image from the list; outlines are coloured by condition. "
+        "Missed a diatom? Choose *➕ Add* and drag from one tip to the other. Wrong outline? Choose "
+        "*➖ Remove* and click it. Wrong condition? Choose *🏷️ Grade*, pick the condition and click the "
+        "diatom. *↶ Undo* takes back your last change.\n"
+        "4. **Download** the Excel file in step 4.\n\n"
+        "The scale is read automatically from the microscope's file or the scale bar; if it can't be, "
+        "you'll be asked what the scale bar says. Nothing leaves this computer. To quit, close this browser "
+        "tab and the black window that opened with it.")
+
+with st.expander("🧬 Teach the tool species names"):
     st.markdown("Tell the tool which species some of the diatoms are. From then on, it suggests species "
                 "names for diatoms in every image. Two or three good examples per species is a fine start.")
     if not res.frustules:
@@ -611,7 +658,7 @@ with st.expander("Teach the tool species names"):
         else:
             st.error("No folders of diatom images were found in that zip.")
 
-with st.expander("Help the tool learn to find diatoms (save training examples)"):
+with st.expander("🎓 Help the tool learn to find diatoms (save training examples)"):
     st.markdown("When every diatom in this image is outlined correctly (after your fixes in step 3), save it "
                 "as a training example. With 10–20 such images, whoever looks after the tool can train a "
                 "detection model for your samples (see README, *Training a detection model*). It then "
@@ -633,16 +680,3 @@ with st.expander("Help the tool learn to find diatoms (save training examples)")
                     zf.write(image_file, image_file.name)
         st.download_button("⬇️ Download all training examples (ZIP)", zbuf2.getvalue(),
                            "diatom_training_examples.zip", mime="application/zip")
-
-with st.expander("How to use this tool"):
-    st.markdown(
-        "1. **Add images** in step 1: drag them in, several at once is fine.\n"
-        "2. **Describe the sample** in step 2. If the results look poor, try another description.\n"
-        "3. **Check each image** in step 3. Pick an image from the list; outlines are coloured by condition. "
-        "Missed a diatom? Choose *➕ Add a missed diatom* and drag along it. Wrong outline? Choose "
-        "*➖ Remove a wrong one* and click it. Wrong condition? Choose *🏷️ Set condition* and click the "
-        "diatom. *↶ Undo* takes back your last change.\n"
-        "4. **Download** the Excel file in step 4.\n\n"
-        "The scale is read automatically from the microscope's file or the scale bar; if it can't be, "
-        "you'll be asked what the scale bar says. Nothing leaves this computer. To quit, close this browser "
-        "tab and the black window that opened with it.")
