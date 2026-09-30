@@ -1,22 +1,89 @@
-# Diatom Analyzer
+<div align="center">
 
-**Drop in SEM images of diatoms. Get every diatom counted, measured in µm and graded intact, cracked
-or broken, with every pore, in one Excel file.** Open source, runs on a laptop, no programming needed.
+# 🔬 Diatom Analyzer
+
+**Automated analysis of diatoms in scanning electron microscope (SEM) images**
+
+Drop in SEM images and every diatom is counted, measured in µm, graded intact, cracked or broken,
+and has its pores measured, with everything exported to one Excel file.
+
+🥈 **2nd place, Nano & Biomaterials Lab category, 2026 Hackathon (William & Mary)**
+
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-app-FF4B4B?logo=streamlit&logoColor=white)
+![OpenCV](https://img.shields.io/badge/OpenCV-5-5C3EE8?logo=opencv&logoColor=white)
+![scikit-image](https://img.shields.io/badge/scikit--image-segmentation-F7931E)
+![Tests](https://img.shields.io/badge/tests-64%20passing-2EA44F)
+![Runs locally](https://img.shields.io/badge/runs-100%25%20local-0F2747)
 
 ![The Diatom Analyzer app](docs/app.jpg)
 
-## What it does
+</div>
 
-| You need | You get |
+## Highlights
+
+- **Image in, measurements out:** count, size (µm), orientation, damage grade, species and every pore's
+  position and diameter, in one step.
+- **The scale is never assumed:** it's read from the microscope's own metadata (Thermo Fisher Phenom,
+  Hitachi S-4700, JEOL, Zeiss, ImageJ), or from the scale bar by OCR, or from the tick ruler. Correct on
+  **all 123 of the lab's SEM images**.
+- **Tested on unseen images:** on 30 held-out test frames with known answers it found every diatom with
+  no false detections, with **0.8 % length error** and **97 % damage-grading accuracy**.
+- **Few-shot species identification:** 94-98 % correct from only 1-5 reference examples per species.
+- **Built for scientists, not programmers:** double-click to start, four guided steps, and
+  click-to-correct editing (add, remove, re-grade).
+- **Learns from its users:** hand corrections become training data for a
+  [Cellpose](https://github.com/MouseLand/cellpose) neural network, so detection can improve on the
+  lab's own sample types.
+- **Private by design:** runs entirely on a laptop, with no cloud, no GPU, and no uploads.
+
+## What it measures
+
+| Requirement | What you get |
 |---|---|
-| Count every diatom | Each one outlined and numbered on the image; touching diatoms are separated |
-| Size in µm | Length, width, diameter and area. The scale comes from the microscope's file or the scale bar on the image, **never a fixed pixel size** |
-| Orientation | The long-axis angle (0-180°), and whether it lies face-on (valve) or on its side (girdle) |
+| Count every diatom | Each one outlined and numbered; touching diatoms are separated |
+| Size in µm | Length, width, diameter and area, with the scale from the microscope file or scale bar |
+| Orientation | Long-axis angle (0-180°), and face-on (valve) or side-on (girdle) view |
 | Condition | Intact, cracked or broken, colour-coded on the image |
-| Shape or species | Round (centric), elongated (pennate), side view or broken piece; species names once you teach it a few examples |
+| Shape or species | Centric, pennate, girdle view or fragment; species once taught a few examples |
 | Pores | Every pore's position and diameter in µm, plus pore density, spacing and porosity per diatom |
 
-Everything runs on your own computer: no cloud, no GPU, and no images leave the machine.
+## How it works
+
+```mermaid
+flowchart LR
+    A[SEM image] --> B[Scale<br/>metadata · scale bar OCR · tick ruler]
+    B --> C[Find diatoms<br/>threshold + watershed · circle detection · Cellpose · by hand]
+    C --> D[Measure<br/>size · orientation · shape]
+    D --> E[Pores<br/>local-contrast detection]
+    E --> F[Condition<br/>corner & crack rules]
+    F --> G[Species<br/>few-shot matching]
+    G --> H[Excel report]
+    C -. user corrections .-> T[Training data<br/>for Cellpose]
+```
+
+The measurements are classical, explainable image analysis: every threshold is recorded in the output,
+so results are reproducible. Machine learning is used where examples exist: few-shot matching for
+species, and an optional Cellpose network trained on the lab's own corrected outlines.
+
+## Tech stack
+
+| Layer | Tools |
+|---|---|
+| Language | Python 3.10+ |
+| Interface | Streamlit (local web app), custom CSS, streamlit-image-coordinates, Altair |
+| Image analysis | scikit-image, OpenCV, SciPy, NumPy |
+| File formats and OCR | tifffile, Pillow, Tesseract (via pytesseract) |
+| Machine learning | Few-shot nearest-neighbour species matching; Cellpose 3 on PyTorch (optional) |
+| Output | pandas, openpyxl |
+| Quality | pytest (64 tests), a synthetic SEM image generator for benchmarks with exact ground truth |
+
+All dependencies are open source.
+
+## Presentation
+
+[`docs/Diatom_Analyzer_overview.pptx`](docs/Diatom_Analyzer_overview.pptx): seven slides on what it does,
+how to use it, how it works, and how accurate it is.
 
 ---
 
@@ -103,7 +170,7 @@ Useful options: `--bar-um 10` (the scale bar in every image is 10 µm), `--um-pe
 | Settings | setting | software version, run time, every threshold |
 | Column guide | column | plain-language definition of every column |
 
-## How it works
+## Pipeline details
 
 ```
 image ─► scale ─► find frustules ─► measure ─► pores & cracks ─► species match ─► damage ─► spreadsheet
@@ -142,9 +209,10 @@ dark features are kept separately as crack candidates.
 
 **5. Damage** (`damage.py`): intact valves have smooth outlines, even when they are crescent-shaped or
 triangular, while broken edges meet the natural margin at **sharp inward corners**. So a frustule is
-*fragmented* if its outline has an inward corner sharper than 40°, very low solidity, or a deep bite
+*fragmented* if its outline has an inward corner sharper than 20°, very low solidity, or a deep bite
 out of the margin; *cracked* if a long crack line crosses the shell or there is a smaller chip; and
-otherwise *intact*. Cuts made when separating touching frustules are ignored. A species library can
+otherwise *intact*. Cuts made when separating touching frustules are ignored, and a waist that narrows
+both margins at the same point (e.g. *Didymosphenia*'s neck) is recognised as natural. A species library can
 relax the solidity test for naturally concave species, but never makes the rules stricter.
 
 **6. Species** (`classification.py`): few-shot matching against your reference library, using
@@ -211,7 +279,7 @@ cultures, *Didymosphenia*, Richmond diatomite):
 - **Dense fields of touching *Didymosphenia* on precipitate**, and diatom fragments among mineral grains
   (raw Richmond diatomite): automatic thresholding cannot separate these from the background. Choose
   *Crowded or messy* in step 2, drag along each diatom from tip to tip, and grade it with
-  *🏷️ Set condition*. Saved as training examples, these outlines can train a Cellpose model (below).
+  *🏷️ Grade*. Saved as training examples, these outlines can train a Cellpose model (below).
 - **Natural waists are not breaks:** an outline that narrows on both sides at the same point (the neck
   below *Didymosphenia*'s head, constricted pennates) is recognised as natural, so it is not graded broken.
 
@@ -230,7 +298,8 @@ python -m diatom_analyzer.evaluate folders path/to/species_folders --shots 5
 python -m diatom_analyzer.evaluate build-library path/to/species_folders --format folders --out species_library
 ```
 
-In the app, *Species library → Import labelled examples* does the same from a .zip of species folders.
+In the app, *More tools → Teach the tool species names → Add a whole reference collection* does the same
+from a .zip of species folders.
 
 ## Training a detection model
 
@@ -264,7 +333,7 @@ the held-out report tells you where you stand.
 
 - **Validate on the lab's own images.** Synthetic images prove the maths, not the realism. The first
   step with real data is to hand-measure a few images and compare them with the spreadsheet. Every
-  threshold is adjustable in *Advanced settings*.
+  threshold is adjustable in *Expert settings*.
 - **Damage and view are rule-based.** They are validated on synthetic breaks; real fracture edges should
   be checked against a few hand-graded lab images, and the corner threshold adjusted if needed.
 - **Dense piles** of overlapping frustules (typical of raw diatomite powder) are harder to separate
@@ -303,6 +372,3 @@ reports/                     benchmark reports
 docs/                        screenshots and the overview slides (Diatom_Analyzer_overview.pptx)
 tests/                       pytest suite
 ```
-
-All dependencies are open source: NumPy, SciPy, scikit-image, OpenCV, tifffile, Pillow, pandas,
-openpyxl, Streamlit and (optionally) Tesseract and Cellpose.
